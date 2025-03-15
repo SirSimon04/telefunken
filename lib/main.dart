@@ -38,7 +38,7 @@ class MyApp extends StatelessWidget {
           ),
         ],
       ),
-        gameRoute: (context) => GameScreen(),
+        //gameRoute: (context) => GameScreen(),
         settingsRoute: (context) => SettingsScreen(),
         joinRoute: (context) => JoinGameScreen(),
         hostRoute: (context) => HostGameScreen(),
