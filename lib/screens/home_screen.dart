@@ -34,15 +34,27 @@ class HomeScreen extends FlameGame {
 
     // Buttons hinzufügen
     final buttonLabels = ['Join a Game', 'Host a Game', 'Play Offline', 'Settings'];
+    final buttonActions = [joinGame, hostGame, playOffline, settings];
     for (int i = 0; i < buttonLabels.length; i++) {
       add(ButtonComponent(
       text: buttonLabels[i],
       position: Vector2(size.x / 2 - 100, size.y / 2 + 100 + i * 50),
-      onPressed: () {
-        // Button-Logik hier hinzufügen
-      },
+      onPressed: buttonActions[i],
       ));
     }
+  }
+
+  void joinGame(){
+    print('Join a Game');
+  }
+  void hostGame(){
+    print('Host a Game');
+  }
+  void playOffline(){
+    print('Play Offline');
+  }
+  void settings(){
+    print('Settings');
   }
 
   void addCardsToScreen(){
