@@ -1,12 +1,12 @@
-enum Suit { hearts, diamonds, clubs, spades, joker }
-enum Rank { two, three, four, five, six, seven, eight, nine, ten, jack, queen, king, ace, joker }
-
 class CardEntity {
-  final Suit suit;
-  final Rank rank;
+  final String suit;
+  final String rank;
+  bool isUp;
 
-  CardEntity({required this.suit, required this.rank});
+  CardEntity({required this.suit, required this.rank, this.isUp = false});
 
   @override
-  String toString() => '${rank.name} of ${suit.name}';
+  String toString() {
+    return suit + rank;
+  }
 }

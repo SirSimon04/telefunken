@@ -4,19 +4,18 @@ class Deck {
   final List<CardEntity> cards = [];
 
   Deck() {
-    // Baue ein einzelnes Poker-Set: 52 Karten + 2 Joker
+    final suits = ['H', 'D', 'C', 'S'];
+    final ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+    
     List<CardEntity> singleSet = [];
-    for (var suit in [Suit.hearts, Suit.diamonds, Suit.clubs, Suit.spades]) {
-      for (var rank in [
-        Rank.two, Rank.three, Rank.four, Rank.five, Rank.six, Rank.seven,
-        Rank.eight, Rank.nine, Rank.ten, Rank.jack, Rank.queen, Rank.king, Rank.ace
-      ]) {
-        singleSet.add(CardEntity(suit: suit, rank: rank));
+    for (var suit in suits) {
+      for (var rank in ranks) {
+        singleSet.add(CardEntity(suit: suit, rank: rank, isUp: false));
       }
     }
     // Zwei Joker hinzufügen
-    singleSet.add(CardEntity(suit: Suit.joker, rank: Rank.joker));
-    singleSet.add(CardEntity(suit: Suit.joker, rank: Rank.joker));
+    singleSet.add(CardEntity(suit: "Joker", rank: "", isUp: false));
+    singleSet.add(CardEntity(suit: "Joker", rank: "2", isUp: false));
 
     // Zwei Sets ergeben insgesamt 108 Karten
     cards.addAll(singleSet);
@@ -27,10 +26,13 @@ class Deck {
     cards.shuffle();
   }
 
-  
-  CardEntity deal(int count) {
+  List<CardEntity> deal(int count) {
     final dealtCards = cards.sublist(0, count);
     cards.removeRange(0, count);
-    return dealtCards.first;
+    return dealtCards;
+  }
+
+  int getLength() {
+    return cards.length;
   }
 }
