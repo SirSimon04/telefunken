@@ -8,3 +8,4 @@ macos/
 web/
 windows/
 pubspec.lock
+node_modules/
