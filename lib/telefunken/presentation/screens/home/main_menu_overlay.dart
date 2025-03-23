@@ -25,7 +25,7 @@ class MainMenuOverlay extends StatelessWidget {
               ),
               SizedBox(height: 10),
               ElevatedButton(
-                onPressed: () => Navigator.pushNamed(context, MyApp.playOfflineRoute),
+                onPressed: () => Navigator.pushNamed(context, MyApp.playSingleRoute),
                 child: Text("Play Offline"),
               ),
               SizedBox(height: 10),

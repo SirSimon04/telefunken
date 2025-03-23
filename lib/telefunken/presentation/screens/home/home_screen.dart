@@ -2,7 +2,7 @@ import 'package:flame/components.dart';
 import 'package:flame/flame.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
-import '../utils/card_loader.dart';
+import '../../../../core/utils/card_loader.dart';
 import 'dart:math' as math;
 class HomeScreen extends FlameGame {
   @override

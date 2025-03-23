@@ -1,6 +1,6 @@
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
-import 'package:telefunken/game/telefunken_game.dart';
+import 'package:telefunken/telefunken/presentation/game/telefunken_game.dart';
 
 class GameScreen extends StatelessWidget {
   final TelefunkenGame game;

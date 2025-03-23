@@ -1,6 +1,6 @@
 import 'rule_set.dart';
-import '../../models/deck.dart';
-import '../../models/player.dart';
+import '../entities/deck.dart';
+import '../entities/player.dart';
 
 class StandardRuleSet extends RuleSet {
   @override

@@ -85,4 +85,5 @@ class DefaultFirebaseOptions {
     storageBucket: 'telefunken-flutter.firebasestorage.app',
     measurementId: 'G-WSZB0XFC5W',
   );
+
 }

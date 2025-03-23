@@ -1,11 +1,11 @@
 import 'package:flame/flame.dart';
 import 'package:flutter/material.dart';
-import 'package:telefunken/game/game_logic.dart';
-import 'package:telefunken/screens/game_screen.dart';
+import 'package:telefunken/telefunken/domain/logic/game_logic.dart';
+import 'package:telefunken/telefunken/presentation/screens/game_screen.dart';
 import '../game/telefunken_game.dart';
-import '../models/deck.dart';
-import '../models/player.dart';
-import '../game/rules/standard_rule_set.dart';
+import '../../domain/entities/deck.dart';
+import '../../domain/entities/player.dart';
+import '../../domain/rules/standard_rule_set.dart';
 
 class PlayOfflineScreen extends StatefulWidget {
   const PlayOfflineScreen({super.key});
@@ -160,7 +160,7 @@ class _PlayOfflineScreenState extends State<PlayOfflineScreen> {
     players.addAll(aiPlayers);
 
     TelefunkenGame telefunkengame = TelefunkenGame(
-      players: players,
+      playerCount: players.length,
       roundDuration: _roundDuration,
     );
 
