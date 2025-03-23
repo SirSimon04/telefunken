@@ -6,13 +6,14 @@ import 'package:flame/flame.dart';
 import 'package:flame/game.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
-import '../models/deck.dart';
-import '../models/player.dart';
-import 'game_logic.dart';
-import 'rules/standard_rule_set.dart';
+import '../../domain/entities/deck.dart';
+import '../../domain/entities/player.dart';
+import '../../domain/logic/game_logic.dart';
+import '../../domain/rules/standard_rule_set.dart';
 
 class TelefunkenGame extends FlameGame {
   late Deck deck;
+  late int playerCount;
   late List<Player> players;
   late GameLogic gameLogic;
   final Duration roundDuration;
@@ -23,7 +24,7 @@ class TelefunkenGame extends FlameGame {
   late RectangleComponent garbageUI;
 
   TelefunkenGame({
-    required this.players,
+    required this.playerCount,
     required this.roundDuration,
   });
 
@@ -81,6 +82,16 @@ class TelefunkenGame extends FlameGame {
     ));
 
     // Platzhalter: UI-Komponente zur Anzeige des Spielstarts
+    final waitForPlayersText = TextComponent(
+      text: "Warte auf Spieler...",
+      textRenderer: TextPaint(
+        style: const TextStyle(fontSize: 24, color: Colors.white),
+      ),
+      position: Vector2(size.x / 2, size.y / 2),
+      anchor: Anchor.center,
+    );
+    add(waitForPlayersText);
+
     final startText = TextComponent(
       text: "Telefunken Game gestartet",
       textRenderer: TextPaint(
@@ -89,19 +100,22 @@ class TelefunkenGame extends FlameGame {
       position: Vector2(size.x / 2, size.y / 2),
       anchor: Anchor.center,
     );
-    add(startText);
 
-    // Timer zum Entfernen des Textes nach 5 Sekunden
-    add(TimerComponent(
-      period: 2,
-      removeOnFinish: true,
-      onTick: () async {
-        remove(startText);
-        // Hier kannst du den Spielstart initiieren
-        gameLogic.startGame();
-        await distributeCards(deckPosition);
-      },
-    ));
+    //wenn alle Spieler da sind, soll der wait text verschwinden und der Starttext erscheinen
+    if(this.playerCount == players.length) {
+      remove(waitForPlayersText);
+      add(startText);
+      add(TimerComponent(
+        period: 2,
+        removeOnFinish: true,
+        onTick: () async {
+          remove(startText);
+          // Hier kannst du den Spielstart initiieren
+          gameLogic.startGame();
+          await distributeCards(deckPosition);
+        },
+      ));
+    }
   }
 
   void displayPlayers(Vector2 deckPosition) {

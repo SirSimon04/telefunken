@@ -1,9 +1,9 @@
-import 'package:telefunken/models/card_entity.dart';
+import 'package:telefunken/telefunken/domain/entities/card_entity.dart';
 
-import '../models/deck.dart';
-import '../models/player.dart';
-import 'rules/rule_set.dart';
-import 'telefunken_game.dart';
+import '../entities/deck.dart';
+import '../entities/player.dart';
+import '../rules/rule_set.dart';
+import '../../presentation/game/telefunken_game.dart';
 
 class GameLogic {
   late Deck deck;

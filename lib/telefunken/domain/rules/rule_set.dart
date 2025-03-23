@@ -1,5 +1,5 @@
-import '../../models/deck.dart';
-import '../../models/player.dart';
+import '../entities/deck.dart';
+import '../entities/player.dart';
 
 abstract class RuleSet {
   void initializeGame(List<Player> players, Deck deck);

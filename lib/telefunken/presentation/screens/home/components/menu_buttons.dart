@@ -18,8 +18,8 @@ class MainMenuButtons extends StatelessWidget {
         ),
         SizedBox(height: 10),
         ElevatedButton(
-          onPressed: () => Navigator.pushNamed(context, '/offline'),
-          child: Text("Play Offline"),
+          onPressed: () => Navigator.pushNamed(context, '/singlePlayer'),
+          child: Text("Single Player"),
         ),
         SizedBox(height: 10),
         ElevatedButton(
