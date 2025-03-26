@@ -4,6 +4,7 @@ class Player {
   final int id;
   final String name;
   final bool isAI;
+  final bool isMyPlayer = true;
   List<CardEntity> hand = [];
 
   Player({required this.id, required this.name, this.isAI = false});
@@ -15,4 +16,12 @@ class Player {
 
   @override
   String toString() => 'Player $id: $name';
+
+  factory Player.fromMap(Map<String, dynamic> data) {
+    return Player(
+      id: data['id'],
+      name: data['name'],
+      isAI: data['isAI'],
+    );
+  }
 }

@@ -43,7 +43,7 @@ class MyApp extends StatelessWidget {
             bottom: 100,
             left: 0,
             right: 0,
-            child: MainMenuButtons(),  // 🔹 Die Buttons aus der separaten Klasse!
+            child: MainMenuButtons(),
           ),
         ],
       ),

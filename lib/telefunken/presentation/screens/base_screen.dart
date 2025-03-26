@@ -30,6 +30,7 @@ class BaseScreen extends StatelessWidget {
             ),
           ),
           // Gemeinsamer Back-Button
+          //Der button soll immer im Vordergrund sein
           if (showBackButton)
             Positioned(
               top: 40,
