@@ -4,6 +4,7 @@ class Deck {
   final List<CardEntity> cards = [];
 
   Deck() {
+    // Order is: Spades, Hearts, Diamonds, Clubs
     final suits = ['H', 'D', 'C', 'S'];
     final ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
     
@@ -26,10 +27,16 @@ class Deck {
     cards.shuffle();
   }
 
-  List<CardEntity> deal(int count) {
+  List<CardEntity> dealCards(int count) {
     final dealtCards = cards.sublist(0, count);
     cards.removeRange(0, count);
     return dealtCards;
+  }
+
+  CardEntity dealOne() {
+    final dealtCard = cards.first;
+    cards.removeAt(0);
+    return dealtCard;
   }
 
   int getLength() {

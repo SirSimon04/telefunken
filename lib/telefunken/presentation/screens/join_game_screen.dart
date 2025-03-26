@@ -20,7 +20,7 @@ class JoinGameScreen extends StatelessWidget {
           ),
           Expanded(
             child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20),
+              margin: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: Colors.black.withOpacity(0.7),
                 borderRadius: BorderRadius.circular(20),
@@ -63,6 +63,7 @@ class JoinGameScreen extends StatelessWidget {
     List<Map<String, dynamic>> mockGames = [
       {
         "room_name": "Poker Night",
+        "owner": "JaneDoe",
         "current_players": 3,
         "max_players": 6,
         "rules": "Texas Hold'em",
@@ -71,6 +72,7 @@ class JoinGameScreen extends StatelessWidget {
       },
       {
         "room_name": "Mafia Game",
+        "owner": "JohnDoe",
         "current_players": 4,
         "max_players": 10,
         "rules": "Classic",
@@ -82,21 +84,25 @@ class JoinGameScreen extends StatelessWidget {
     return _buildGameList(mockGames);
   }
 
-  /// **Gemeinsame Methode zum Bauen der Game-Liste**
   Widget _buildGameList(List<Map<String, dynamic>> games) {
     return Scrollbar(
       thickness: 6,
+      thumbVisibility: true,
       radius: const Radius.circular(10),
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(vertical: 10),
         itemCount: games.length,
-        separatorBuilder: (context, index) => const Divider(color: Colors.grey),
+        separatorBuilder: (context, index) => const Divider(
+          color: Colors.grey,
+          indent: 16,
+          endIndent: 16,
+        ),
         itemBuilder: (context, index) {
           var game = games[index];
           return ListTile(
             title: Text(game['room_name'], style: const TextStyle(color: Colors.white)),
             subtitle: Text(
-              "${game['current_players']}/${game['max_players']} Players • ${game['rules']}",
+              "${game['current_players']}/${game['max_players']} Players • ${game['rules']} • ${game['owner']}",
               style: const TextStyle(color: Colors.white70),
             ),
             trailing: Icon(

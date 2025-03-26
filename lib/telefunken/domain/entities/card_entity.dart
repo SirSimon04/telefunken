@@ -9,4 +9,6 @@ class CardEntity {
   String toString() {
     return suit + rank;
   }
+
+
 }
