@@ -57,13 +57,13 @@ class GameLogic {
     });
   }
 
-  void validateMove(List<CardEntity> cards, Player player) {
-    // Wenn der Spielzug gültig ist, führe ihn aus
-    // Wenn die Spielerhand leer ist nachdem er die Karten auf den Tisch ist der Spielzug invalide
+  bool validateMove(List<CardEntity> cards, Player player) {
+
+    return true;
   }
 
-  bool isPlayersTurn(Player player){
-    return players[currentPlayerIndex].id == player.id;
+  bool isPlayersTurn(int playerID){
+    return players[currentPlayerIndex].id == playerID;
   }
 
   void updateUI() {
