@@ -24,8 +24,11 @@ class TelefunkenGame extends FlameGame {
   late int playerIndex;
   late TextComponent cardsLeftText;
   late TextComponent waitingForPlayersText;
+  late Vector2 deckPosition;
   late SpriteComponent deckUI;
   late RectangleComponent garbageUI;
+  late RectangleComponent playerHandUI;
+  late RectangleComponent tableUI;
 
   TelefunkenGame({
     required this.playerName,
@@ -36,14 +39,11 @@ class TelefunkenGame extends FlameGame {
 
   @override
   Future<void> onLoad() async {
-    // Lade Hintergrund, UI-Komponenten, etc.
     add(SpriteComponent()
       ..sprite = await loadSprite('background.png')
       ..size = size);
 
-    final deckPosition = Vector2(size.x / 2, size.y / 3);
-
-    // Deck UI
+    deckPosition = Vector2(size.x / 2, size.y / 3);
     deckUI = SpriteComponent(
       sprite: await loadSprite('cards/Back_Red.png'),
       position: deckPosition,
@@ -52,9 +52,9 @@ class TelefunkenGame extends FlameGame {
     );
     add(deckUI);
 
-    // Garbage UI (Ablagestapel)
+    Vector2 garbagePosition = deckPosition + Vector2(10, 0);
     garbageUI = RectangleComponent(
-      position: deckPosition + Vector2(10, 0),
+      position: garbagePosition,
       size: Vector2(50, 70),
       anchor: Anchor.centerLeft,
       paint: Paint()
@@ -63,6 +63,30 @@ class TelefunkenGame extends FlameGame {
         ..color = Colors.white,
     );
     add(garbageUI);
+
+    Vector2 playerHandPosition = Vector2(size.x, size.y - 150);
+    playerHandUI = RectangleComponent(
+      position: playerHandPosition,
+      size: Vector2(size.x, 70),
+      anchor: Anchor.centerRight,
+      paint: Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0
+        ..color = Colors.white,
+    );
+    
+
+    Vector2 tablePosition = Vector2(size.x / 2, size.y / 2 + 75);
+    tableUI = RectangleComponent(
+      position: tablePosition,
+      size: Vector2(350 , 300 ),
+      anchor: Anchor.center,
+      paint: Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0
+        ..color = Colors.white,
+    );
+    add(tableUI);
 
     // Text für verbleibende Karten
     cardsLeftText = TextComponent(
@@ -100,32 +124,16 @@ class TelefunkenGame extends FlameGame {
     }
   }
 
-  /// Initialisiert die GameLogic und startet das Spiel
   void _initializeGameLogic() {
     gameLogic = GameLogic(
       players: lobbyPlayers,
       ruleSet: ruleSet,
     );
 
-    //Zeige die neue Reihenfolge der Spieler an
     gameLogic!.startGame();
     _displayPlayers(gameLogic!.players);
     playerIndex = gameLogic!.players.indexWhere((player) => player.name == playerName);
     distributeCards(Vector2(size.x / 2, size.y / 3));
-
-  //   for (var player in gameLogic!.players) {
-  //     for (var i = 0; i < player.hand.length; i++) {
-  //       final cardComponent = CardComponent(
-  //         card: player.hand[i],
-  //         gameLogic: gameLogic,
-  //         onCardTapped: (CardEntity tappedCard) {
-  //           print("Karte geklickt: ${tappedCard.toString()}");
-  //         },
-  //       )
-  //         ..position = Vector2(i * 60, gameLogic!.players.indexOf(player) * 100);
-  //       add(cardComponent);
-  //     }
-  //   }
   }
 
   void updateWaitingText() {
@@ -139,6 +147,7 @@ class TelefunkenGame extends FlameGame {
       waitingForPlayersText.text = 'Waiting for ${playerCount - lobbyPlayers!.length} players...';
     }
   }
+
   void updateCardsLeftText([int? cardsLeft]) {
     cardsLeftText.text = 'Cards left: ${cardsLeft ?? gameLogic?.getDeckLength() ?? 0}';
     if ((gameLogic?.getDeckLength() ?? 0) == 0) {
@@ -166,7 +175,6 @@ class TelefunkenGame extends FlameGame {
     }
   }
 
-  /// Hier nur die Animation, da die Karten in der Game_Logic verteilt werden!
   Future<void> distributeCards(Vector2 deckPosition) async {
     int count = 0;
     var amountOfCards = lobbyPlayers.length * 11 + 1;
@@ -183,7 +191,7 @@ class TelefunkenGame extends FlameGame {
     }
   }
 
-  /// Animiert das Austeilen einer Karte vom Deck zu einer Spielerposition
+
   Future<void> dealCardAnimation(Vector2 startPosition, Vector2 endPosition) async {
     final card = SpriteComponent()
       ..sprite = Sprite(await images.load('cards/Back_Red.png'))
@@ -191,8 +199,7 @@ class TelefunkenGame extends FlameGame {
       ..size = Vector2(50, 70)
       ..anchor = Anchor.centerRight;
     add(card);
-    await Future.delayed(Duration(milliseconds: 500));
-    //Die Karte soll ganz oben liegen
+    await Future.delayed(Duration(milliseconds: 200));
     card.priority = 10;
     card.add(MoveEffect.to(
       endPosition,
@@ -201,30 +208,35 @@ class TelefunkenGame extends FlameGame {
     ));
   }
 
-  /// Zeigt die Hand des aktiven Spielers an
   void displayCurrentPlayerHand() async {
     final int cardCount = gameLogic!.players[playerIndex].hand.length;
     final double cardWidth = 50.0;
     final double minSpacing = 15.0;
     final double maxSpacing = 50.0;
-    
+
     final double totalWidth = (cardCount - 1) * maxSpacing + cardWidth;
     double spacing = totalWidth > size.x ? (size.x - cardWidth) / (cardCount - 1) : maxSpacing;
     spacing = spacing.clamp(minSpacing, maxSpacing);
     final double handWidth = (cardCount - 1) * spacing + cardWidth;
     final Vector2 startPosition = Vector2((size.x - handWidth) / 2, size.y - 150);
-    
+
     for (int i = 0; i < cardCount; i++) {
       final Vector2 cardPosition = startPosition + Vector2(i * spacing, 0);
-      // Im Offline-Modus: Aktiver Spieler sieht seine eigene Hand
       String cardAsset = 'cards/${gameLogic?.players[playerIndex].hand[i].toString()}.png';
-      
-      add(SpriteComponent()
-        ..sprite = await loadSprite(cardAsset)
-        ..position = cardPosition
-        ..anchor = Anchor.bottomLeft
-        ..size = Vector2(cardWidth, 70)
-        ..priority = 1);
+
+      add(CardComponent(
+        card: gameLogic!.players[playerIndex].hand[i],
+        gameLogic: gameLogic,
+        onCardDropped: (CardEntity droppedCard) {
+          print("Karte abgelegt: ${droppedCard.toString()}");
+        },
+        sprite: await loadSprite(cardAsset),
+        position: cardPosition,
+        size: Vector2(cardWidth, 70),
+        garbageUI: garbageUI,
+        tableUI: tableUI,
+        playerHandUI: playerHandUI,
+      ));
     }
   }
 

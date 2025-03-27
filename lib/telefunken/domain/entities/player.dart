@@ -24,4 +24,8 @@ class Player {
       isAI: data['isAI'],
     );
   }
+
+  void removeCardFromHand(CardEntity card) {
+    hand.remove(card);
+  }
 }
