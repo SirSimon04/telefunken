@@ -11,8 +11,8 @@ class GameLogic {
   final RuleSet ruleSet;
 
   late Deck deck;
-  late List<CardEntity> table;
-  late List<CardEntity> discardPile;
+  final List<CardEntity> table = [];
+  final List<CardEntity> discardPile = [];
 
   late int currentPlayerIndex ;
 
@@ -33,7 +33,6 @@ class GameLogic {
     for (var player in players) {
       sortPlayersHand(player);
     }
-
   }
 
   void dealCards(int cardsToDeal) {
@@ -70,7 +69,21 @@ class GameLogic {
     //game.nextTurn();
   }
 
+  void nextTurn(){
+
+  }
+
   int getDeckLength() {
     return deck.getLength();
+  }
+
+  void playCard(CardEntity card) {
+    table.add(card); // Karte auf den Tisch legen
+    players[currentPlayerIndex].removeCardFromHand(card); // Karte aus der Hand entfernen
+  }
+
+  void discardCard(CardEntity card) {
+    discardPile.add(card); // Karte in den Ablagestapel verschieben
+    players[currentPlayerIndex].removeCardFromHand(card); // Karte aus der Hand entfernen
   }
 }

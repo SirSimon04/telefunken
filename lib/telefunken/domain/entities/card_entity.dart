@@ -10,5 +10,11 @@ class CardEntity {
     return suit + rank;
   }
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CardEntity && runtimeType == other.runtimeType && suit == other.suit && rank == other.rank;
 
+  @override
+  int get hashCode => suit.hashCode ^ rank.hashCode;
 }
