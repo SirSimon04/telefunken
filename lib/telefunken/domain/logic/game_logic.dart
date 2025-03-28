@@ -1,3 +1,4 @@
+import 'package:flame/image_composition.dart';
 import 'package:flutter/material.dart';
 import 'package:telefunken/telefunken/domain/entities/card_entity.dart';
 
@@ -24,7 +25,8 @@ class GameLogic {
 
   void startGame() {
     deck = Deck();
-    players.shuffle();
+    //players.shuffle();
+    players.reverse();
     deck.shuffle();
 
     int cardsToDeal = players.length * 11 + 1; // 12 Karten für den ersten Spieler, 11 für die anderen
@@ -57,7 +59,27 @@ class GameLogic {
   }
 
   bool validateMove(List<CardEntity> cards, Player player) {
+    if(cards.length > 1){
+      return validateTable(cards, player);
+    }else if(cards.length == 1){
+      return validateDiscard(cards.first, player);
+    }
+    return true;
+  }
 
+  bool validateTable(List<CardEntity> cards, Player player) {
+    print("Validating: " + cards.toString());
+    // Hier die Logik zur Validierung der Karten auf dem Tisch implementieren
+    return true;
+  }
+
+  bool validateDiscard(CardEntity card, Player player) {
+    card.isUp = true; // Karte aufdecken
+    if (card.suit == 'Joker' || card.rank == '2') {
+      print("Joker oder 2 Karte auf den Ablagestapel gelegt");
+      // Joker dürfen nicht auf den Ablagestapel gelegt werden
+      return false;
+    }
     return true;
   }
 
@@ -78,12 +100,22 @@ class GameLogic {
   }
 
   void playCard(CardEntity card) {
-    table.add(card); // Karte auf den Tisch legen
-    players[currentPlayerIndex].removeCardFromHand(card); // Karte aus der Hand entfernen
+    table.add(card);
+    players[currentPlayerIndex].removeCardFromHand(card);
+    card.isUp = true;
+  }
+
+  void playCards(List<CardEntity> cards) {
+    for (var card in cards) {
+      playCard(card);
+    }
   }
 
   void discardCard(CardEntity card) {
     discardPile.add(card); // Karte in den Ablagestapel verschieben
-    players[currentPlayerIndex].removeCardFromHand(card); // Karte aus der Hand entfernen
+    players[currentPlayerIndex].removeCardFromHand(card);
+    card.isUp = true;
+
+    //next Player
   }
 }

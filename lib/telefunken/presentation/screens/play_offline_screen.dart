@@ -150,7 +150,7 @@ class _PlayOfflineScreenState extends State<PlayOfflineScreen> {
       ),
     );
 
-
+    //Join game sollte später durch den Firebase Controller aufgerufen werden und in gamelogic implementiert werden
     Future.forEach(players, (Player player) async {
       await Future.delayed(Duration(seconds: (1)));
       telefunkengame.joinGame(player);

@@ -194,6 +194,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
   void displayCurrentPlayerHand() async {
     // Entferne alle bisherigen Karten (sicherstellen, dass keine alten Komponenten übrig sind)
     children.whereType<CardComponent>().forEach(remove);
+
     final int cardCount = gameLogic!.players[playerIndex].hand.length;
     final double cardWidth = 50.0;
     final double minSpacing = 15.0;
@@ -206,40 +207,16 @@ class TelefunkenGame extends FlameGame with TapDetector {
 
     for (int i = 0; i < cardCount; i++) {
       final Vector2 pos = startPos + Vector2(i * spacing, 0);
-      final CardEntity card = gameLogic!.players[playerIndex].hand[i];
-      final cardComp = CardComponent(
+      final card = gameLogic!.players[playerIndex].hand[i];
+      final cardComponent = CardComponent(
         card: card,
-        ownerId: gameLogic!.players[playerIndex].name,
-        onCardDropped: (card) {
-          // Hier kannst du die Logik implementieren, um die Karte zu verarbeiten
-          print("Karte ${card.card} wurde abgelegt");
-          handleCardDrop(card);
-        },
-        onHighlightChanged: (card) {
-          if (card.isHighlighted) {
-            highlightedCards.add(card);
-          } else {
-            highlightedCards.remove(card);
-          }
-        },
-      )
-        ..position = pos
-        ..size = Vector2(cardWidth, 70)
-        ..anchor = Anchor.center;
-      add(cardComp);
+        ownerId: gameLogic!.players[playerIndex].id,
+        gameLogic: gameLogic!,
+        onCardsDropped: handleCardsDrop,
+        position: pos,
+      );
+      add(cardComponent);
     }
-  }
-
-    @override
-  bool onTapDown(TapDownInfo info) {
-    print("Player tap down on ${info.eventPosition.widget}");
-    return true;
-  }
-
-  @override
-  bool onTapUp(TapUpInfo info) {
-    print("Player tap up on ${info.eventPosition.widget}");
-    return true;
   }
 
   void displayOpponentsHand(Player player) async {
@@ -268,45 +245,80 @@ class TelefunkenGame extends FlameGame with TapDetector {
     }
   }
 
-  void handleCardDrop(CardComponent card) {
-    // Verwende die aktuelle Position der Karte (z.B. den Mittelpunkt oder eine definierte Ecke)
-    final cardPos = card.position; // z. B. bottomLeft oder center; hier nutzen wir card.position
-    final dropOffset = Offset(cardPos.x, cardPos.y);
+  void handleCardsDrop(List<CardComponent> group) {
+    List<CardEntity> cards = group.map((cardComponent) => cardComponent.card).toList();
 
-    // Prüfe, ob die Karte in der DiscardZone liegt
-    if (discardZone.contains(dropOffset)) {
-      print("Karte in discardZone abgelegt");
-      // Animiert die Karte zum Zentrum der DiscardZone
-      final target = Vector2(discardZone.center.dx, discardZone.center.dy);
-      card.add(MoveEffect.to(
-        target,
-        EffectController(duration: 0.5, curve: Curves.easeInOut),
-      ));
-      //nextTunr();
+    // Überprüfe, ob der Spieler am Zug ist
+    if (!gameLogic!.isPlayersTurn(gameLogic!.players[playerIndex].id)) {
+      print("Nicht dein Zug! Aktion abgebrochen.");
+      resetGroupToOriginalPosition(group);
+      CardComponent.selectedCards.clear();
+      return;
     }
-    // Falls mehrere Karten ausgewählt wurden, wird nur der Tisch als Drop-Zone genutzt
-    else if (tableZone.contains(dropOffset) && highlightedCards.length > 1) {
-      print("Mehrere Karten in TableZone abgelegt");
-      final target = Vector2(tableZone.center.dx, tableZone.center.dy);
-      card.add(MoveEffect.to(
-        target,
-        EffectController(duration: 0.5, curve: Curves.easeInOut),
-      ));
-      gameLogic?.playCard(card.card);
-    
-    } 
-    // Falls der Drop in keiner gültigen Zone erfolgt: animiere die Karte zurück zu ihrer Originalposition
-    else {
-      print("Ungültiger Drop - Karte kehrt zurück");
-      card.add(MoveEffect.to(
-        card.originalPosition,
+
+    // Überprüfe, ob die Gruppe leer ist
+    if (cards.isEmpty) {
+      print("Ungültige Gruppe");
+      resetGroupToOriginalPosition(group);
+      CardComponent.selectedCards.clear();
+      return;
+    }
+
+    // Einzelkarte behandeln
+    if (cards.length == 1) {
+      final card = group.first;
+      final cardRect = Rect.fromLTWH(card.position.x, card.position.y, 50, 70);
+
+      if (discardZone.overlaps(cardRect)) {
+        if (gameLogic!.validateDiscard(cards.first, gameLogic!.players[playerIndex])) {
+          card.removeOwner();
+          gameLogic!.discardCard(cards.first);
+        } else {
+          print("Ungültige Karte für den Ablagestapel");
+          resetGroupToOriginalPosition(group);
+        }
+      } else if (tableZone.overlaps(cardRect)) {
+        card.removeOwner();
+        gameLogic!.playCard(cards.first);
+      } else {
+        print("Karte wurde nicht korrekt abgelegt");
+        resetGroupToOriginalPosition(group);
+      }
+      CardComponent.selectedCards.clear();
+      return;
+    }
+
+    // Gruppe behandeln
+    if (cards.length > 1) {
+      final firstCardRect = Rect.fromLTWH(group.first.position.x, group.first.position.y, 50, 70);
+
+      if (tableZone.overlaps(firstCardRect)) {
+        if (gameLogic!.validateMove(cards, gameLogic!.players[playerIndex])) {
+          gameLogic!.playCards(cards);
+          //Every Cardcomponent of group loses his owner
+          for (var cardComponent in group) {
+            cardComponent.removeOwner();
+          }
+        } else {
+          print("Ungültige Gruppe für den Tisch");
+          resetGroupToOriginalPosition(group);
+        }
+      } else {
+        print("Gruppe wurde nicht korrekt abgelegt");
+        resetGroupToOriginalPosition(group);
+      }
+      CardComponent.selectedCards.clear();
+      return;
+    }
+  }
+
+  // Hilfsmethode zum Zurücksetzen der Kartenpositionen
+  void resetGroupToOriginalPosition(List<CardComponent> group) {
+    for (var cardComponent in group) {
+      cardComponent.add(MoveEffect.to(
+        cardComponent.originalPosition,
         EffectController(duration: 0.5, curve: Curves.easeOut),
       ));
     }
-  }
-  void updateTableUI() {
-    // Hier kannst du die Logik implementieren, um den Tisch zu aktualisieren
-    // z.B. Karten auf dem Tisch anzeigen, Ablagestapel aktualisieren etc.
-    print("Tisch UI aktualisieren");
   }
 }

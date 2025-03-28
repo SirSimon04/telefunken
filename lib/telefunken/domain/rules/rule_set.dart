@@ -1,7 +1,10 @@
+import 'package:telefunken/telefunken/domain/entities/card_entity.dart';
+
 import '../entities/deck.dart';
 import '../entities/player.dart';
 
 abstract class RuleSet {
   void initializeGame(List<Player> players, Deck deck);
-  // Hier kannst du weitere abstrakte Methoden für die Spiellogik definieren.
+  bool validateMove(List<CardEntity> cards);
+  // Weitere methodische Definitionen entsprechend den Anforderungen
 }
