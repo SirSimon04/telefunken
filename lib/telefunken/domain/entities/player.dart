@@ -4,10 +4,11 @@ class Player {
   final int id;
   final String name;
   final bool isAI;
-  final bool isMyPlayer = true;
+
+  late bool isOut;
   List<CardEntity> hand = [];
 
-  Player({required this.id, required this.name, this.isAI = false});
+  Player({required this.id, required this.name, this.isAI = false, this.isOut = false});
 
   void addCardToHand(CardEntity card) {
     card.isUp = true; // Karte aufdecken, wenn sie zur Hand des Spielers hinzugefügt wird
