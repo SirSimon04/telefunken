@@ -4,6 +4,7 @@ import 'package:flame/image_composition.dart';
 import 'package:flutter/material.dart';
 import 'package:telefunken/telefunken/domain/entities/card_entity.dart';
 import 'package:telefunken/telefunken/presentation/game/card_component.dart';
+import 'package:telefunken/telefunken/service/firestore_controller.dart';
 
 import '../entities/deck.dart';
 import '../entities/player.dart';
@@ -13,25 +14,31 @@ import '../../presentation/game/telefunken_game.dart';
 class GameLogic {
   final List<Player> players;
   final RuleSet ruleSet;
+  final FirestoreController firestoreController;
 
   late Deck deck;
   final List<List<CardEntity>> table = [];
   final List<CardEntity> discardPile = [];
 
-  late int currentPlayerIndex ;
+  late int currentPlayerIndex;
   late int roundNumber;
   late List<List<CardEntity>> currentMoves = [];
+
+  final String gameId; // Firestore Game ID
 
   GameLogic({
     required this.players,
     required this.ruleSet,
+    required this.firestoreController,
+    required this.gameId,
     this.currentPlayerIndex = 0,
     this.roundNumber = 1,
   });
 
-  void startGame() {
+  // Starte das Spiel und synchronisiere mit Firestore
+  Future<void> startGame() async {
     deck = Deck();
-    //players.shuffle();
+    //pl//ayers.shuffle();
     players.reverse();
     deck.shuffle();
 
@@ -41,15 +48,31 @@ class GameLogic {
     for (var player in players) {
       sortPlayersHand(player);
     }
+
+    // Synchronisiere den initialen Spielstatus mit Firestore
+    await firestoreController.updateGameState(gameId, {
+      'currentPlayer': players[currentPlayerIndex].id,
+      'table': table.map((group) => group.map((card) => card.toMap()).toList()).toList(),
+      'discardPile': discardPile.map((card) => card.toMap()).toList(),
+      'isGameStarted': true,
+    });
   }
 
+  // Karten austeilen und synchronisieren
   void dealCards(int cardsToDeal) {
-    int playerIndex=0;
+    int playerIndex = 0;
     for (int i = 0; i < cardsToDeal; i++) {
       Player currentPlayer = players[playerIndex];
       CardEntity card = deck.dealOne();
       currentPlayer.addCardToHand(card);
       playerIndex = (playerIndex + 1) % players.length;
+    }
+
+    // Synchronisiere die Hände der Spieler mit Firestore
+    for (var player in players) {
+      firestoreController.updateGameState(gameId, {
+        'players.${player.id}.hand': player.hand.map((card) => card.toMap()).toList(),
+      });
     }
   }
 
@@ -68,12 +91,13 @@ class GameLogic {
     });
   }
 
-  void nextTurn(){
-    if (currentPlayerIndex == players.length - 1) {
-      currentPlayerIndex = 0;
-    } else {
-      currentPlayerIndex++;
-    }
+  // Nächster Spieler und Synchronisation
+  Future<void> nextTurn() async {
+    currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+
+    await firestoreController.updateGameState(gameId, {
+      'currentPlayer': players[currentPlayerIndex].id,
+    });
   }
 
   void nextRound(){
@@ -195,5 +219,21 @@ class GameLogic {
       players[currentPlayerIndex].removeCardsFromHand(move);
     }
     currentMoves.clear();
+  }
+
+  // Beobachte Änderungen im Spielstatus
+  void listenToGameState() {
+    firestoreController.listenToGameState(gameId).listen((snapshot) {
+      if (snapshot.exists) {
+        final data = snapshot.data()!;
+        // Aktualisiere den lokalen Spielstatus basierend auf Firestore-Daten
+        currentPlayerIndex = players.indexWhere((p) => p.id == data['currentPlayer']);
+        table.clear();
+        table.addAll((data['table'] as List).map((group) =>
+            (group as List).map((card) => CardEntity.fromMap(card)).toList()));
+        discardPile.clear();
+        discardPile.addAll((data['discardPile'] as List).map((card) => CardEntity.fromMap(card)));
+      }
+    });
   }
 }

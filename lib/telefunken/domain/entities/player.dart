@@ -20,12 +20,30 @@ class Player {
   @override
   String toString() => 'Player $id: $name';
 
-  factory Player.fromMap(Map<String, dynamic> data) {
+  // Konvertiere Player in Map
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'name': name,
+      'isAI': isAI,
+      'isOut': isOut,
+      'hand': hand.map((card) => card.toMap()).toList(),
+      'coins': coins,
+      'points': points,
+    };
+  }
+
+  // Erstelle Player aus Map
+  factory Player.fromMap(Map<String, dynamic> map) {
     return Player(
-      id: data['id'],
-      name: data['name'],
-      isAI: data['isAI'],
-    );
+      id: map['id'] as int,
+      name: map['name'] as String,
+      isAI: map['isAI'] as bool? ?? false,
+    )
+      ..isOut = map['isOut'] as bool? ?? false
+      ..hand = (map['hand'] as List).map((card) => CardEntity.fromMap(card as Map<String, dynamic>)).toList()
+      ..coins = map['coins'] as int? ?? 0
+      ..points = map['points'] as int? ?? 0;
   }
 
   void removeCardFromHand(CardEntity card) {
