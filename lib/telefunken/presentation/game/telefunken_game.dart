@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:telefunken/telefunken/domain/entities/card_entity.dart';
 import 'package:telefunken/telefunken/domain/rules/rule_set.dart';
 import 'package:telefunken/telefunken/presentation/game/card_component.dart';
+import 'package:telefunken/telefunken/service/firestore_controller.dart';
 import '../../domain/entities/player.dart';
 import '../../domain/logic/game_logic.dart';
 
@@ -15,6 +16,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
   final int playerCount;
   final Duration roundDuration;
   final RuleSet ruleSet;
+  final FirestoreController firestoreController;
 
   List<Player> lobbyPlayers = [];
   GameLogic? gameLogic;
@@ -33,6 +35,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
     required this.playerCount,
     required this.roundDuration,
     required this.ruleSet,
+    required this.firestoreController,
   });
 
   @override
@@ -42,7 +45,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
       ..sprite = await loadSprite('background.png')
       ..size = size);
 
-    deckPosition = Vector2(size.x / 2 - 25, size.y / 3); // Anpassen, sodass das Deck zentriert erscheint
+    deckPosition = Vector2(size.x / 2 - 25, size.y / 3);
 
     // UI-Komponenten laden
     deckUI = SpriteComponent(
@@ -113,10 +116,13 @@ class TelefunkenGame extends FlameGame with TapDetector {
 
   void _initializeGameLogic() {
     gameLogic = GameLogic(
+      gameId: UniqueKey().toString(),
       players: lobbyPlayers,
       ruleSet: ruleSet,
+      firestoreController: firestoreController,
     );
     gameLogic!.startGame();
+    gameLogic!.listenToGameState(); // Beobachte Änderungen im Spielstatus
     _displayPlayers(gameLogic!.players);
     playerIndex = gameLogic!.players.indexWhere((player) => player.name == playerName);
     _distributeCards(deckPosition);
@@ -155,8 +161,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
       count++;
       _updateCardsLeftText(108 - count);
     }
-    displayCurrentPlayerHand();
-    displayOpponentsHand();
+    updateUI();
   }
 
   Future<void> _dealCardAnimation(Vector2 startPos, Vector2 endPos) async {

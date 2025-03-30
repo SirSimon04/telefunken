@@ -1,4 +1,10 @@
+import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:telefunken/telefunken/domain/entities/player.dart';
+import 'package:telefunken/telefunken/domain/rules/rule_set.dart';
+import 'package:telefunken/telefunken/presentation/game/telefunken_game.dart';
+import 'package:telefunken/telefunken/service/firestore_controller.dart';
 import 'base_screen.dart';
 
 class HostGameScreen extends StatefulWidget {
@@ -36,9 +42,9 @@ class _HostGameScreenState extends State<HostGameScreen> {
     super.dispose();
   }
 
-  void _startGame() {
+  Future<void> _startGame() async {
     if (_formKey.currentState!.validate()) {
-      // Alle Eingaben validiert, hier kannst du den Firestore-Controller aufrufen
+      // Alle Eingaben validiert
       String playerName = _playerNameController.text.trim();
       String roomName = _roomNameController.text.trim();
       String? password = _usePassword ? _passwordController.text.trim() : null;
@@ -46,12 +52,53 @@ class _HostGameScreenState extends State<HostGameScreen> {
       String ruleSet = _selectedRuleSet;
       int roundDuration = int.parse(_selectedRoundDuration);
 
-      // Beispiel-Ausgabe in der Konsole – hier wird dann dein Firestore-Aufruf erfolgen.
-      debugPrint('HostGame: playerName=$playerName, roomName=$roomName, maxPlayers=$maxPlayers, '
-          'password=${password ?? "no password"}, ruleSet=$ruleSet, roundDuration=$roundDuration sec');
+      // Lade FirestoreController
+      final firestoreController = FirestoreController();
 
-      // Anschließend Navigieren zum GameScreen (oder weitere Logik)
-      // Navigator.pushReplacement(...);
+      // Zeige Ladeanzeige
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      try {
+        // Erstelle das Spiel in Firestore
+        String gameId = await firestoreController.createGame(
+          roomName,
+          playerName,
+          maxPlayers,
+          ruleSet,
+          roundDuration,
+          password: password,
+        );
+
+        // Navigiere zum Spiel
+        final game = TelefunkenGame(
+          playerName: playerName,
+          playerCount: maxPlayers,
+          roundDuration: Duration(seconds: roundDuration),
+          ruleSet: RuleSet.fromName(ruleSet),
+          firestoreController: firestoreController,
+        );
+
+        //instantly join as the host to the game
+        await firestoreController.addPlayer(gameId, playerName);
+        
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => Scaffold(
+              body: GameWidget(game: game),
+            ),
+          ),
+        );
+      } catch (e) {
+        Navigator.pop(context); // Entferne Ladeanzeige
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error creating game: $e")),
+        );
+      }
     }
   }
 
@@ -59,8 +106,7 @@ class _HostGameScreenState extends State<HostGameScreen> {
   Widget build(BuildContext context) {
     return BaseScreen(
       child: Container(
-
-        padding: EdgeInsets.only(top: 60, bottom: 20, left: 20, right: 20),
+        padding: const EdgeInsets.only(top: 60, bottom: 20, left: 20, right: 20),
         child: Form(
           key: _formKey,
           child: Column(
@@ -113,7 +159,6 @@ class _HostGameScreenState extends State<HostGameScreen> {
                 },
               ),
               const SizedBox(height: 20),
-              // Anzahl der Teilnehmer Dropdown
               DropdownButtonFormField<int>(
                 value: _selectedPlayers,
                 decoration: const InputDecoration(
@@ -138,7 +183,6 @@ class _HostGameScreenState extends State<HostGameScreen> {
                 },
               ),
               const SizedBox(height: 20),
-              // Regelwerk Dropdown
               DropdownButtonFormField<String>(
                 value: _selectedRuleSet,
                 decoration: const InputDecoration(
@@ -163,7 +207,6 @@ class _HostGameScreenState extends State<HostGameScreen> {
                 },
               ),
               const SizedBox(height: 20),
-              // Rundendauer Dropdown
               DropdownButtonFormField<String>(
                 value: _selectedRoundDuration,
                 decoration: const InputDecoration(
@@ -188,7 +231,6 @@ class _HostGameScreenState extends State<HostGameScreen> {
                 },
               ),
               const SizedBox(height: 20),
-              // Passwort-Switch und Passwortfeld
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [

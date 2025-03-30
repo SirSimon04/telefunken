@@ -1,6 +1,10 @@
-import 'package:flutter/foundation.dart'; // Für kDebugMode
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flame/game.dart';
+import 'package:telefunken/telefunken/domain/entities/player.dart';
+import 'package:telefunken/telefunken/domain/rules/rule_set.dart';
+import 'package:telefunken/telefunken/presentation/game/telefunken_game.dart';
+import 'package:telefunken/telefunken/service/firestore_controller.dart';
 import 'base_screen.dart';
 
 class JoinGameScreen extends StatelessWidget {
@@ -25,7 +29,7 @@ class JoinGameScreen extends StatelessWidget {
                 color: Colors.black.withOpacity(0.7),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: kDebugMode ? _buildMockList() : _buildFirestoreList(),
+              child: _buildFirestoreList(),
             ),
           ),
         ],
@@ -33,7 +37,6 @@ class JoinGameScreen extends StatelessWidget {
     );
   }
 
-  /// **Firestore-Daten (Produktiv-Modus)**
   Widget _buildFirestoreList() {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('hosted_games').snapshots(),
@@ -42,46 +45,20 @@ class JoinGameScreen extends StatelessWidget {
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return const Center(child: Text("Fehler beim Laden der Spiele!", style: TextStyle(color: Colors.white)));
+          return const Center(child: Text("Error loading games!", style: TextStyle(color: Colors.white)));
         }
-        
+
         var games = snapshot.data?.docs ?? [];
 
         if (games.isEmpty) {
           return const Center(
-            child: Text("Keine Spiele gefunden", style: TextStyle(color: Colors.white, fontSize: 18)),
+            child: Text("No games found", style: TextStyle(color: Colors.white, fontSize: 18)),
           );
         }
 
         return _buildGameList(games.map((doc) => doc.data() as Map<String, dynamic>).toList());
       },
     );
-  }
-
-  /// **Mock-Daten für Debug-Modus**
-  Widget _buildMockList() {
-    List<Map<String, dynamic>> mockGames = [
-      {
-        "room_name": "Poker Night",
-        "owner": "JaneDoe",
-        "current_players": 3,
-        "max_players": 6,
-        "rules": "Texas Hold'em",
-        "password": null,
-        "id": "1"
-      },
-      {
-        "room_name": "Mafia Game",
-        "owner": "JohnDoe",
-        "current_players": 4,
-        "max_players": 10,
-        "rules": "Classic",
-        "password": "secret",
-        "id": "2"
-      }
-    ];
-
-    return _buildGameList(mockGames);
   }
 
   Widget _buildGameList(List<Map<String, dynamic>> games) {
@@ -161,20 +138,19 @@ class JoinGameScreen extends StatelessWidget {
 
                 if (playerName.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Bitte gib deinen Namen ein!")),
+                    const SnackBar(content: Text("Please enter your name!")),
                   );
                   return;
                 }
 
                 if (requiresPassword && enteredPassword != correctPassword) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Falsches Passwort!")),
+                    const SnackBar(content: Text("Incorrect password!")),
                   );
                   return;
                 }
 
-                await _joinGame(roomId, playerName);
-                Navigator.pop(context);
+                await _joinGame(context, roomId, playerName);
               },
               child: const Text("Join Game"),
             ),
@@ -184,11 +160,30 @@ class JoinGameScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _joinGame(String roomId, String playerName) async {
+  Future<void> _joinGame(BuildContext context, String roomId, String playerName) async {
     final roomRef = FirebaseFirestore.instance.collection('hosted_games').doc(roomId);
 
+    // Update Firestore with the new player
     await roomRef.update({
       'players': FieldValue.arrayUnion([playerName])
     });
+
+    // Starte das Spiel mit Flame
+    final game = TelefunkenGame(
+      playerName: playerName,
+      playerCount: 0, // Dynamisch aus Firestore laden
+      roundDuration: const Duration(seconds: 60), // Beispielwert
+      ruleSet: RuleSet.fromName("Standard"), // Dynamisch aus Firestore laden
+      firestoreController: FirestoreController(),
+    );
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          body: GameWidget(game: game),
+        ),
+      ),
+    );
   }
 }
