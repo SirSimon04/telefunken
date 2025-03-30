@@ -3,11 +3,14 @@ import 'card_entity.dart';
 class Deck {
   final List<CardEntity> cards = [];
 
+  final suits = ['H', 'D', 'C', 'S'];
+  final ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+
   Deck() {
-    // Order is: Spades, Hearts, Diamonds, Clubs
-    final suits = ['H', 'D', 'C', 'S'];
-    final ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
-    
+    createDeck();
+  }
+
+  void createDeck(){
     List<CardEntity> singleSet = [];
     for (var suit in suits) {
       for (var rank in ranks) {
@@ -37,6 +40,11 @@ class Deck {
     final dealtCard = cards.first;
     cards.removeAt(0);
     return dealtCard;
+  }
+
+  void reset(){
+    cards.clear();
+    createDeck();
   }
 
   int getLength() {

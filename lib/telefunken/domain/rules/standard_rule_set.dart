@@ -4,130 +4,107 @@ import '../entities/player.dart';
 import '../entities/card_entity.dart';
 
 class StandardRuleSet extends RuleSet {
+  final Map<String, int> rankValues = {
+    'Joker': 0,
+    '2': 0,
+    '3': 3,
+    '4': 4,
+    '5': 5,
+    '6': 6,
+    '7': 7,
+    '8': 8,
+    '9': 9,
+    '10': 10,
+    'J': 11,
+    'Q': 12,
+    'K': 13,
+    'A': 14,
+  };
+
+  //Mein Plan:
+  // Ein Spieler kann immer Karten ablegen. Dabei wird sofort geprüft ob dieser "Move" gültig ist.
+  // Ein Spieler kann mehrere "Moves" machen
+  // Zum Schluss, wenn die "Discard" Karte abgelegt wird, wird geprüft, ob die Spielzüge dem Austrittskriterium der jeweiligen Runde entsprechen und/oder ob der Spieler bereits "isOut" ist.
+  // Wenn der Spieler bereits "isOut" ist, wird nur geprüft, ob die Moves gültig waren
+  // Die Moves werden in der Klasse "GameLogic" als "currentMoves" gespeichert.
+  // Sobald ein Move jedoch invalide ist, geht dieser wieder direkt zur Ausgangsposition und wird nicht verändert
+
+  
+
   @override
-  void initializeGame(List<Player> players, Deck deck) {
-    // Mische das Deck und teile Karten aus
-    deck.shuffle();
-    int cardsToDeal = players.length * 11 + 1; // 12 Karten für den ersten Spieler, 11 für die anderen
-    dealCards(players, deck, cardsToDeal);
-  }
-
-  void dealCards(List<Player> players, Deck deck, int cardsToDeal) {
-    int playerIndex = 0;
-    for (int i = 0; i < cardsToDeal; i++) {
-      Player currentPlayer = players[playerIndex];
-      CardEntity card = deck.dealOne();
-      currentPlayer.addCardToHand(card);
-      playerIndex = (playerIndex + 1) % players.length;
+  bool validateDiscard(CardEntity card) {
+    if(card.suit == 'Joker' || card.rank == '2' ) {
+      print("Joker or 2 are not allowed to be discarded");
+      return false;
+    }else{
+      return true;
     }
   }
 
-  bool validateInitialMove(List<CardEntity> cards, int roundNumber) {
-    // Überprüfe die Anforderungen für die aktuelle Runde
-    switch (roundNumber) {
-      case 1:
-        return _validatePairs(cards, 3, 2); // Zwei 3er-Paare
-      case 2:
-        return _validatePairs(cards, 4, 1); // Ein 4er-Paar
-      case 3:
-        return _validatePairs(cards, 4, 2); // Zwei 4er-Paare
-      case 4:
-        return _validatePairs(cards, 5, 1); // Ein 5er-Paar
-      case 5:
-        return _validatePairs(cards, 5, 2); // Zwei 5er-Paare
-      case 6:
-        return _validatePairs(cards, 6, 1); // Ein 6er-Paar
-      case 7:
-        return _validateSequence(cards, 7); // Eine 7er-Reihe
-      default:
-        return false;
+ // Hilfsmethode: Ermittelt, ob eine Karte als Joker gilt.
+  // Nur Karten mit suit "Joker" gelten als echte Joker – Karten mit Rank "2" sind normale Karten.
+    bool _isJoker(CardEntity c) {
+      return c.suit.toLowerCase() == 'joker';
     }
-  }
 
-  bool _validatePairs(List<CardEntity> cards, int pairSize, int pairCount) {
-    Map<String, int> rankCounts = {};
-    int jokerCount = cards.where((card) => card.rank == 'Joker' || card.rank == '2').length;
+  @override
+  bool validateMove(List<CardEntity> cards) {
+    if (cards.isEmpty) return false;
+    if(cards.length < 3) return false; //Es müssen immer mindestens 3 Karten nebeneinander liegen
+    bool isGroup = false;
+    bool isSequence = false;
+
+    int JokerCount = 0;
+    int twoCount = 0;
 
     for (var card in cards) {
-      if (card.rank != 'Joker' && card.rank != '2') {
-        rankCounts[card.rank] = (rankCounts[card.rank] ?? 0) + 1;
+      if (_isJoker(card)) {
+        JokerCount++;
+      } else if (card.rank == '2') {
+        twoCount++;
       }
     }
+    if(JokerCount > cards.length/2){
+      print("More Joker than normal cards");
+      return false;
+    }
+    
+    //check for groups:
+    int rank = rankValues[cards[0].rank]!;
+    for(int i=0; i<cards.length; i++){
+      if(rankValues[cards[i].rank] != rank){
+        if(rankValues[cards[i].rank] == 0){
 
-    int validPairs = 0;
-
-    for (var count in rankCounts.values) {
-      while (count + jokerCount >= pairSize) {
-        validPairs++;
-        if (count >= pairSize) {
-          count -= pairSize;
-        } else {
-          jokerCount -= (pairSize - count);
-          count = 0;
+          continue; //Just a joker
+        }else{
+          break; //Not a group or wrong move
         }
       }
-    }
+      isGroup = true;
+    } 
 
-    while (jokerCount >= pairSize) {
-      validPairs++;
-      jokerCount -= pairSize;
-    }
-
-    return validPairs >= pairCount;
-  }
-  bool _validateSequence(List<CardEntity> cards, int sequenceLength) {
-    if (cards.length != sequenceLength) return false;
-
-    List<int> ranks = cards.map((card) => _rankToInt(card.rank)).toList();
-    ranks.sort();
-
-    int jokerCount = cards.where((card) => card.rank == 'Joker' || card.rank == '2').length;
-    int gaps = 0;
-
-    for (int i = 1; i < ranks.length; i++) {
-      if (ranks[i] != ranks[i - 1] + 1) {
-        gaps += (ranks[i] - ranks[i - 1] - 1);
+    //check for sequence:
+    String suit = cards.first.suit == 'Joker' ? cards[1].suit : cards.first.suit;
+    for(int i=0; i<cards.length; i++){
+      if(cards[i].suit != suit){
+        if(rankValues[cards[i].rank] == 0){
+          rank++;
+          continue; //Just a joker
+        }else{
+          break; //Not a sequence or wrong move
+        }
+      }else{
+        rank++;
+        isSequence = true;
       }
+      isSequence = true;
     }
 
-    return gaps <= jokerCount;
+    return isGroup || isSequence;
   }
 
-  int _rankToInt(String rank) {
-    const rankOrder = {
-      '2': 2,
-      '3': 3,
-      '4': 4,
-      '5': 5,
-      '6': 6,
-      '7': 7,
-      '8': 8,
-      '9': 9,
-      '10': 10,
-      'J': 11,
-      'Q': 12,
-      'K': 13,
-      'A': 14,
-      'Joker': 0, // Joker als 0 behandeln
-    };
-    return rankOrder[rank] ?? 0;
-  }
-
-  bool validateDiscard(CardEntity card) {
-    // Überprüfe, ob die Karte auf den Ablagestapel gelegt werden darf
-    if (card.rank == 'Joker' || card.rank == '2') {
-      return false; // Joker und 2 dürfen nicht abgelegt werden
-    }
+  @override
+  bool validateRoundCondition(List<List<CardEntity>> cards, int roundNumber) {
     return true;
-  }
-
-  bool validateMove(List<CardEntity> cards) {
-    // Überprüfe, ob die Karten mindestens drei nebeneinander sind
-    if (cards.length < 3) return false;
-
-    int jokerCount = cards.where((card) => card.rank == 'Joker' || card.rank == '2').length;
-    int nonJokerCount = cards.length - jokerCount;
-
-    return jokerCount < nonJokerCount; // Es müssen mehr echte Karten als Joker sein
   }
 }

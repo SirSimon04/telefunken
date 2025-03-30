@@ -7,11 +7,13 @@ class Player {
 
   late bool isOut;
   List<CardEntity> hand = [];
+  late int coins;
+  late int points;
 
   Player({required this.id, required this.name, this.isAI = false, this.isOut = false});
 
   void addCardToHand(CardEntity card) {
-    card.isUp = true; // Karte aufdecken, wenn sie zur Hand des Spielers hinzugefügt wird
+    card.isUp = true;
     hand.add(card);
   }
 
@@ -28,5 +30,19 @@ class Player {
 
   void removeCardFromHand(CardEntity card) {
     hand.remove(card);
+  }
+
+  void removeCardsFromHand(List<CardEntity> cards) {
+    for (var card in cards) {
+      hand.remove(card);
+    }
+  }
+
+  void clearHand() {
+    hand.clear();
+  }
+
+  void setOut() {
+    isOut = true;
   }
 }
