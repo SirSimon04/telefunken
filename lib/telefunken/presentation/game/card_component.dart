@@ -7,12 +7,12 @@ import 'package:telefunken/telefunken/domain/logic/game_logic.dart';
 
 class CardComponent extends SpriteComponent with TapCallbacks, DragCallbacks, CollisionCallbacks {
   final CardEntity card;
-  late int ownerId;
+  late int? ownerId;
   final GameLogic gameLogic;
   final void Function(List<CardComponent>)? onCardsDropped;
   final void Function(CardComponent)? onHighlightChanged;
   bool isHighlighted = false;
-  late Vector2 originalPosition;
+  Vector2? originalPosition;
   Vector2? lastPointerPosition;
 
   static List<CardComponent> selectedCards = [];
@@ -65,11 +65,10 @@ class CardComponent extends SpriteComponent with TapCallbacks, DragCallbacks, Co
     return gameLogic.players[gameLogic.currentPlayerIndex].id == ownerId;
   }
 
-  void removeOwner(){
-    ownerId = -1;
-    isHighlighted = false;
-    selectedCards.remove(this);
-    onHighlightChanged?.call(this);
+  void removeOwner() {
+    ownerId = null;
+    originalPosition = null;
+    print("Nutzerspezifische Eigenschaften der Karte wurden entfernt.");
   }
 
   @override

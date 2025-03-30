@@ -28,9 +28,6 @@ class TelefunkenGame extends FlameGame with TapDetector {
   late Rect discardZone;
   late Rect tableZone;
 
-  // Hier sammeln wir die Karten, die gerade gehighlightet wurden
-  List<CardComponent> highlightedCards = [];
-
   TelefunkenGame({
     required this.playerName,
     required this.playerCount,
@@ -77,7 +74,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
       textRenderer: TextPaint(
         style: const TextStyle(fontSize: 18, color: Colors.white),
       ),
-      position: deckPosition + Vector2(0, 80),
+      position: deckPosition + Vector2(0, 50),
       anchor: Anchor.center,
     );
     add(cardsLeftText);
@@ -91,8 +88,6 @@ class TelefunkenGame extends FlameGame with TapDetector {
       anchor: Anchor.center,
     );
     add(waitingForPlayersText);
-
-    // Hier werden später Spieler hinzugefügt und GameLogic initialisiert
   }
 
   void joinGame(Player player) {
@@ -161,11 +156,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
       _updateCardsLeftText(108 - count);
     }
     displayCurrentPlayerHand();
-    for (var player in gameLogic!.players) {
-      if (player.name != playerName) {
-        displayOpponentsHand(player);
-      }
-    }
+    displayOpponentsHand();
   }
 
   Future<void> _dealCardAnimation(Vector2 startPos, Vector2 endPos) async {
@@ -219,20 +210,26 @@ class TelefunkenGame extends FlameGame with TapDetector {
     }
   }
 
-  void displayOpponentsHand(Player player) async {
-    final int cardCount = player.hand.length;
+  void displayOpponentsHand() async {
     final double cardWidth = 30.0;
     final double spacing = 10.0;
-    final Vector2 playerPos = playerPositions[player.name] ?? Vector2.zero();
-    final Vector2 startPos = playerPos + Vector2(-((cardCount - 1) * spacing + cardWidth) / 2, 20);
-    for (int i = 0; i < cardCount; i++) {
-      final Vector2 pos = startPos + Vector2(i * spacing, 0);
-      add(SpriteComponent()
-        ..sprite = await loadSprite('cards/Back_Red.png')
-        ..position = pos
-        ..anchor = Anchor.topLeft
-        ..size = Vector2(cardWidth, 42)
-        ..priority = 1);
+
+    for (var player in gameLogic!.players) {
+
+      if (player.id != gameLogic!.players[playerIndex].id) {
+            final int cardCount = player.hand.length;
+        final Vector2 playerPos = playerPositions[player.name] ?? Vector2.zero();
+        final Vector2 startPos = playerPos + Vector2(-((cardCount - 1) * spacing + cardWidth) / 2, 20);
+        for (int i = 0; i < cardCount; i++) {
+          final Vector2 pos = startPos + Vector2(i * spacing, 0);
+          add(SpriteComponent()
+            ..sprite = await loadSprite('cards/Back_Red.png')
+            ..position = pos
+            ..anchor = Anchor.topLeft
+            ..size = Vector2(cardWidth, 42)
+            ..priority = 1);
+        }
+      }
     }
   }
 
@@ -245,70 +242,90 @@ class TelefunkenGame extends FlameGame with TapDetector {
     }
   }
 
-  void handleCardsDrop(List<CardComponent> group) {
-    List<CardEntity> cards = group.map((cardComponent) => cardComponent.card).toList();
+  void showTable() async{
+    const double cardWidth = 30.0;
+    const double cardHeight = 50.0;
+    const double groupPadding = 20.0;
+    const double cardSpacing = -10.0;
 
+    double currentX = tableZone.left;
+    double currentY = tableZone.top;
+
+    for (var group in gameLogic!.table) {
+      // Berechne die Breite der Gruppe
+      final double groupWidth = group.length * (cardWidth + cardSpacing) - cardSpacing;
+
+      // Wenn die Gruppe nicht mehr in die aktuelle Zeile passt, springe in die nächste Zeile
+      if (currentX + groupWidth > tableZone.right) {
+        currentX = tableZone.left;
+        currentY += cardHeight + groupPadding;
+      }
+
+      // Platziere die Karten der Gruppe
+      for (int i = 0; i < group.length; i++) {
+        final card = group[i];
+        final Vector2 position = Vector2(
+          currentX + i * (cardWidth + cardSpacing),
+          currentY,
+        );
+
+        add(SpriteComponent()
+          ..sprite = Sprite(await images.load('cards/${card.suit}${card.rank}.png'))
+          ..position = position
+          ..size = Vector2(cardWidth, cardHeight)
+          ..anchor = Anchor.topLeft);
+      }
+      currentX += groupWidth + groupPadding;
+    }
+  }
+
+  void showDiscardPile() async{
+    const double cardWidth = 50.0;
+    const double cardHeight = 70.0;
+
+    if(gameLogic!.discardPile.isEmpty) return;
+    final card = gameLogic!.discardPile.last;
+    add(SpriteComponent()
+      ..sprite = Sprite(await images.load('cards/${card.suit}${card.rank}.png'))
+      ..position = Vector2(discardZone.right, discardZone.center.dy)
+      ..size = Vector2(cardWidth, cardHeight)
+      ..anchor = Anchor.topCenter);
+  }
+
+  void updateUI(){
+    displayCurrentPlayerHand();
+    displayOpponentsHand();
+    showTable();
+    showDiscardPile();
+  }
+
+  void handleCardsDrop(List<CardComponent> group) {
     // Überprüfe, ob der Spieler am Zug ist
     if (!gameLogic!.isPlayersTurn(gameLogic!.players[playerIndex].id)) {
       print("Nicht dein Zug! Aktion abgebrochen.");
       resetGroupToOriginalPosition(group);
       CardComponent.selectedCards.clear();
       return;
-    }
-
-    // Überprüfe, ob die Gruppe leer ist
-    if (cards.isEmpty) {
-      print("Ungültige Gruppe");
-      resetGroupToOriginalPosition(group);
-      CardComponent.selectedCards.clear();
-      return;
-    }
-
-    // Einzelkarte behandeln
-    if (cards.length == 1) {
-      final card = group.first;
-      final cardRect = Rect.fromLTWH(card.position.x, card.position.y, 50, 70);
-
-      if (discardZone.overlaps(cardRect)) {
-        if (gameLogic!.validateDiscard(cards.first, gameLogic!.players[playerIndex])) {
-          card.removeOwner();
-          gameLogic!.discardCard(cards.first);
-        } else {
-          print("Ungültige Karte für den Ablagestapel");
-          resetGroupToOriginalPosition(group);
-        }
-      } else if (tableZone.overlaps(cardRect)) {
-        card.removeOwner();
-        gameLogic!.playCard(cards.first);
-      } else {
-        print("Karte wurde nicht korrekt abgelegt");
-        resetGroupToOriginalPosition(group);
-      }
-      CardComponent.selectedCards.clear();
-      return;
-    }
-
-    // Gruppe behandeln
-    if (cards.length > 1) {
-      final firstCardRect = Rect.fromLTWH(group.first.position.x, group.first.position.y, 50, 70);
-
-      if (tableZone.overlaps(firstCardRect)) {
-        if (gameLogic!.validateMove(cards, gameLogic!.players[playerIndex])) {
-          gameLogic!.playCards(cards);
-          //Every Cardcomponent of group loses his owner
-          for (var cardComponent in group) {
-            cardComponent.removeOwner();
+    }else{
+      if(group.length == 1){
+        //check if the card is with the discard offset
+        if(group[0].position.x > discardZone.left && group[0].position.x < discardZone.right &&
+           group[0].position.y > discardZone.top && group[0].position.y < discardZone.bottom){
+            print("Discarding");
+          if(gameLogic!.validateDiscard(group.first.card)){
+            updateUI();
+          }else{
+            resetGroupToOriginalPosition(group);
           }
-        } else {
-          print("Ungültige Gruppe für den Tisch");
+        }
+      }else{
+        if(gameLogic!.validateMove(group.map((card) => card.card).toList())){
+
+        }else{
           resetGroupToOriginalPosition(group);
         }
-      } else {
-        print("Gruppe wurde nicht korrekt abgelegt");
-        resetGroupToOriginalPosition(group);
       }
       CardComponent.selectedCards.clear();
-      return;
     }
   }
 
@@ -316,7 +333,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
   void resetGroupToOriginalPosition(List<CardComponent> group) {
     for (var cardComponent in group) {
       cardComponent.add(MoveEffect.to(
-        cardComponent.originalPosition,
+        cardComponent.originalPosition!,
         EffectController(duration: 0.5, curve: Curves.easeOut),
       ));
     }
