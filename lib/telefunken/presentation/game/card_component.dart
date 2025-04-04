@@ -7,7 +7,7 @@ import 'package:telefunken/telefunken/domain/logic/game_logic.dart';
 
 class CardComponent extends SpriteComponent with TapCallbacks, DragCallbacks, CollisionCallbacks {
   final CardEntity card;
-  late int? ownerId;
+  late String? ownerId;
   final GameLogic gameLogic;
   final void Function(List<CardComponent>)? onCardsDropped;
   final void Function(CardComponent)? onHighlightChanged;

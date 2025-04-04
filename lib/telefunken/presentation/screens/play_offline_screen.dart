@@ -6,6 +6,7 @@ import 'package:telefunken/telefunken/domain/rules/rule_set.dart';
 import 'package:telefunken/telefunken/presentation/game/telefunken_game.dart';
 import 'package:telefunken/telefunken/presentation/screens/game_screen.dart';
 import 'package:telefunken/telefunken/service/firestore_controller.dart';
+import 'package:uuid/uuid.dart';
 
 class PlayOfflineScreen extends StatefulWidget {
   const PlayOfflineScreen({Key? key}) : super(key: key);
@@ -46,7 +47,7 @@ class _PlayOfflineScreenState extends State<PlayOfflineScreen> {
       List<Player> players = List.generate(
         maxPlayers,
         (index) => Player(
-          id: index + 1,
+          id: Uuid().v4(),
           name: index == 0 ? playerName : 'AI Player ${index + 1}',
           isAI: index != 0,
         ),
@@ -57,10 +58,8 @@ class _PlayOfflineScreenState extends State<PlayOfflineScreen> {
 
       // GameLogic initialisieren
       final game = TelefunkenGame(
+        gameId: '2233123123',
         playerName: playerName,
-        playerCount: 0, // Dynamisch aus Firestore laden
-        roundDuration: const Duration(seconds: 60), // Beispielwert
-        ruleSet: RuleSet.fromName("Standard"), // Dynamisch aus Firestore laden
         firestoreController: FirestoreController(),
       );
 

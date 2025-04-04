@@ -44,7 +44,7 @@ class _HostGameScreenState extends State<HostGameScreen> {
 
   Future<void> _startGame() async {
     if (_formKey.currentState!.validate()) {
-      // Alle Eingaben validiert
+      // Eingaben validieren
       String playerName = _playerNameController.text.trim();
       String roomName = _roomNameController.text.trim();
       String? password = _usePassword ? _passwordController.text.trim() : null;
@@ -52,10 +52,10 @@ class _HostGameScreenState extends State<HostGameScreen> {
       String ruleSet = _selectedRuleSet;
       int roundDuration = int.parse(_selectedRoundDuration);
 
-      // Lade FirestoreController
+      // FirestoreController laden
       final firestoreController = FirestoreController();
 
-      // Zeige Ladeanzeige
+      // Ladeanzeige anzeigen
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -63,7 +63,7 @@ class _HostGameScreenState extends State<HostGameScreen> {
       );
 
       try {
-        // Erstelle das Spiel in Firestore
+        // Spiel in Firestore erstellen
         String gameId = await firestoreController.createGame(
           roomName,
           playerName,
@@ -73,18 +73,17 @@ class _HostGameScreenState extends State<HostGameScreen> {
           password: password,
         );
 
+        // Host dem Spiel hinzufügen
+        await firestoreController.addPlayer(gameId, playerName);
+
         // Navigiere zum Spiel
+        Navigator.pop(context); // Ladeanzeige entfernen
         final game = TelefunkenGame(
+          gameId: gameId,
           playerName: playerName,
-          playerCount: maxPlayers,
-          roundDuration: Duration(seconds: roundDuration),
-          ruleSet: RuleSet.fromName(ruleSet),
           firestoreController: firestoreController,
         );
 
-        //instantly join as the host to the game
-        await firestoreController.addPlayer(gameId, playerName);
-        
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -94,7 +93,7 @@ class _HostGameScreenState extends State<HostGameScreen> {
           ),
         );
       } catch (e) {
-        Navigator.pop(context); // Entferne Ladeanzeige
+        Navigator.pop(context); // Ladeanzeige entfernen
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Error creating game: $e")),
         );

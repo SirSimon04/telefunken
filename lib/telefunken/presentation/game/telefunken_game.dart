@@ -12,17 +12,15 @@ import '../../domain/entities/player.dart';
 import '../../domain/logic/game_logic.dart';
 
 class TelefunkenGame extends FlameGame with TapDetector {
+  final String gameId;
   final String playerName;
-  final int playerCount;
-  final Duration roundDuration;
-  final RuleSet ruleSet;
   final FirestoreController firestoreController;
 
-  List<Player> lobbyPlayers = [];
   GameLogic? gameLogic;
   final Map<String, Vector2> playerPositions = {};
 
   late int playerIndex;
+  late int maxPlayers;
   late TextComponent cardsLeftText;
   late TextComponent waitingForPlayersText;
   late Vector2 deckPosition;
@@ -31,23 +29,24 @@ class TelefunkenGame extends FlameGame with TapDetector {
   late Rect tableZone;
 
   TelefunkenGame({
+    required this.gameId,
     required this.playerName,
-    required this.playerCount,
-    required this.roundDuration,
-    required this.ruleSet,
     required this.firestoreController,
   });
 
   @override
   Future<void> onLoad() async {
-    // Lade Hintergrund
+    await _loadUIComponents();
+    _observeGameState();
+  }
+
+  Future<void> _loadUIComponents() async {
     add(SpriteComponent()
       ..sprite = await loadSprite('background.png')
       ..size = size);
 
     deckPosition = Vector2(size.x / 2 - 25, size.y / 3);
 
-    // UI-Komponenten laden
     deckUI = SpriteComponent(
       sprite: await loadSprite('cards/Back_Red.png'),
       position: deckPosition,
@@ -56,14 +55,12 @@ class TelefunkenGame extends FlameGame with TapDetector {
     );
     add(deckUI);
 
-    // DiscardZone: Rechts neben dem Deck
     discardZone = Rect.fromLTWH(
       deckPosition.x + 10,
       deckPosition.y - 70,
       50,
-      70
+      70,
     );
-
 
     tableZone = Rect.fromLTWH(
       10,
@@ -83,7 +80,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
     add(cardsLeftText);
 
     waitingForPlayersText = TextComponent(
-      text: 'Waiting for ${playerCount - lobbyPlayers.length} players...',
+      text: 'Waiting for Players...',
       textRenderer: TextPaint(
         style: const TextStyle(fontSize: 24, color: Colors.white),
       ),
@@ -93,36 +90,39 @@ class TelefunkenGame extends FlameGame with TapDetector {
     add(waitingForPlayersText);
   }
 
-  void joinGame(Player player) {
-    if (!lobbyPlayers.any((p) => p.id == player.id)) {
-      lobbyPlayers.add(player);
-      _updateWaitingText();
-    }
-    if (lobbyPlayers.length >= playerCount && gameLogic == null) {
-      _initializeGameLogic();
-    }
+  void _observeGameState() {
+    firestoreController.listenToGameState(gameId).listen((snapshot) {
+      if (snapshot.exists) {
+        final data = snapshot.data()!;
+        final currentPlayers = data['current_players'] ?? 0;
+        maxPlayers = data['max_players'] ?? 0;
+        _updateWaitingText(currentPlayers);
+      }
+    });
   }
 
-  void _updateWaitingText() {
-    if (lobbyPlayers.length == playerCount) {
+
+  void _updateWaitingText([int? currentPlayers]) {
+    if (currentPlayers == maxPlayers) {
       waitingForPlayersText.text = 'All players joined. Starting game...';
-      Future.delayed(const Duration(seconds: 1), () {
+      print("All players joined. Starting game...");
+      Future.delayed(const Duration(seconds: 1), () async {
         remove(waitingForPlayersText);
+        _initializeGameLogic();
       });
     } else {
-      waitingForPlayersText.text = 'Waiting for ${playerCount - lobbyPlayers.length} players...';
+      waitingForPlayersText.text = 'Waiting for players...';
     }
   }
 
-  void _initializeGameLogic() {
+  void _initializeGameLogic() async {
     gameLogic = GameLogic(
-      gameId: UniqueKey().toString(),
-      players: lobbyPlayers,
-      ruleSet: ruleSet,
+      gameId: gameId,
       firestoreController: firestoreController,
     );
-    gameLogic!.startGame();
-    gameLogic!.listenToGameState(); // Beobachte Änderungen im Spielstatus
+    await gameLogic!.startGame();
+    gameLogic!.listenToGameState();
+
     _displayPlayers(gameLogic!.players);
     playerIndex = gameLogic!.players.indexWhere((player) => player.name == playerName);
     _distributeCards(deckPosition);
@@ -131,7 +131,6 @@ class TelefunkenGame extends FlameGame with TapDetector {
   void _displayPlayers(List<Player> players) {
     final radius = 180.0;
     for (int i = 0; i < players.length; i++) {
-      // Für einen schönen Bogen oberhalb des Decks: Fester Winkelbereich von 60° bis 120°
       final double startAngle = pi / 3;
       final double endAngle = 2 * pi / 3;
       double angle = startAngle;
@@ -151,9 +150,9 @@ class TelefunkenGame extends FlameGame with TapDetector {
 
   Future<void> _distributeCards(Vector2 deckPos) async {
     int count = 0;
-    final totalCards = lobbyPlayers.length * 11 + 1; // 12 für den Startspieler, 11 für alle anderen
+    final totalCards = maxPlayers * 11 + 1;
     for (int i = 0; i < totalCards; i++) {
-      final idx = i % lobbyPlayers.length;
+      final idx = i % maxPlayers;
       await _dealCardAnimation(
         deckPos,
         playerPositions[gameLogic!.players[idx].name] ?? Vector2(size.x / 2, size.y - 100),
@@ -188,7 +187,6 @@ class TelefunkenGame extends FlameGame with TapDetector {
   }
 
   void displayCurrentPlayerHand() async {
-    // Entferne alle bisherigen Karten (sicherstellen, dass keine alten Komponenten übrig sind)
     children.whereType<CardComponent>().forEach(remove);
 
     final int cardCount = gameLogic!.players[playerIndex].hand.length;
@@ -238,15 +236,6 @@ class TelefunkenGame extends FlameGame with TapDetector {
     }
   }
 
-  void nextTurn() {
-    playerIndex = (playerIndex + 1) % lobbyPlayers.length;
-    if (lobbyPlayers[playerIndex].isAI) {
-      nextTurn();
-    } else {
-      displayCurrentPlayerHand();
-    }
-  }
-
   void showTable() async{
     const double cardWidth = 30.0;
     const double cardHeight = 50.0;
@@ -257,16 +246,13 @@ class TelefunkenGame extends FlameGame with TapDetector {
     double currentY = tableZone.top;
 
     for (var group in gameLogic!.table) {
-      // Berechne die Breite der Gruppe
       final double groupWidth = group.length * (cardWidth + cardSpacing) - cardSpacing;
 
-      // Wenn die Gruppe nicht mehr in die aktuelle Zeile passt, springe in die nächste Zeile
       if (currentX + groupWidth > tableZone.right) {
         currentX = tableZone.left;
         currentY += cardHeight + groupPadding;
       }
 
-      // Platziere die Karten der Gruppe
       for (int i = 0; i < group.length; i++) {
         final card = group[i];
         final Vector2 position = Vector2(
@@ -305,7 +291,6 @@ class TelefunkenGame extends FlameGame with TapDetector {
   }
 
   void handleCardsDrop(List<CardComponent> group) {
-    // Überprüfe, ob der Spieler am Zug ist
     if (!gameLogic!.isPlayersTurn(gameLogic!.players[playerIndex].id)) {
       print("Nicht dein Zug! Aktion abgebrochen.");
       resetGroupToOriginalPosition(group);
@@ -313,7 +298,6 @@ class TelefunkenGame extends FlameGame with TapDetector {
       return;
     }else{
       if(group.length == 1){
-        //check if the card is with the discard offset
         if(group[0].position.x > discardZone.left && group[0].position.x < discardZone.right &&
            group[0].position.y > discardZone.top && group[0].position.y < discardZone.bottom){
             print("Discarding");
@@ -334,7 +318,6 @@ class TelefunkenGame extends FlameGame with TapDetector {
     }
   }
 
-  // Hilfsmethode zum Zurücksetzen der Kartenpositionen
   void resetGroupToOriginalPosition(List<CardComponent> group) {
     for (var cardComponent in group) {
       cardComponent.add(MoveEffect.to(
