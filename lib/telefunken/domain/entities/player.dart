@@ -1,7 +1,7 @@
 import 'card_entity.dart';
 
 class Player {
-  final int id;
+  final String id;
   final String name;
   final bool isAI;
 
@@ -23,7 +23,7 @@ class Player {
   // Konvertiere Player in Map
   Map<String, dynamic> toMap() {
     return {
-      'id': id,
+      'id': String,
       'name': name,
       'isAI': isAI,
       'isOut': isOut,
@@ -36,7 +36,7 @@ class Player {
   // Erstelle Player aus Map
   factory Player.fromMap(Map<String, dynamic> map) {
     return Player(
-      id: map['id'] as int,
+      id: map['id'] as String,
       name: map['name'] as String,
       isAI: map['isAI'] as bool? ?? false,
     )

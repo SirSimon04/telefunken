@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flame/game.dart';
 import 'package:telefunken/telefunken/domain/entities/player.dart';
+import 'package:telefunken/telefunken/domain/logic/game_logic.dart';
 import 'package:telefunken/telefunken/domain/rules/rule_set.dart';
 import 'package:telefunken/telefunken/presentation/game/telefunken_game.dart';
 import 'package:telefunken/telefunken/service/firestore_controller.dart';
 import 'base_screen.dart';
 
 class JoinGameScreen extends StatelessWidget {
-  const JoinGameScreen({Key? key}) : super(key: key);
+  JoinGameScreen({Key? key}) : super(key: key);
+  ScrollController _scrollController = ScrollController();
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +41,7 @@ class JoinGameScreen extends StatelessWidget {
 
   Widget _buildFirestoreList() {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('hosted_games').snapshots(),
+      stream: FirebaseFirestore.instance.collection('games').snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -56,17 +58,19 @@ class JoinGameScreen extends StatelessWidget {
           );
         }
 
-        return _buildGameList(games.map((doc) => doc.data() as Map<String, dynamic>).toList());
+        return _buildGameList(snapshot, games.map((doc) => doc.data() as Map<String, dynamic>).toList());
       },
     );
   }
 
-  Widget _buildGameList(List<Map<String, dynamic>> games) {
+  Widget _buildGameList(AsyncSnapshot<QuerySnapshot> snapshot, List<Map<String, dynamic>> games) {
     return Scrollbar(
+      controller: _scrollController,
       thickness: 6,
       thumbVisibility: true,
       radius: const Radius.circular(10),
       child: ListView.separated(
+        controller: _scrollController,
         padding: const EdgeInsets.symmetric(vertical: 10),
         itemCount: games.length,
         separatorBuilder: (context, index) => const Divider(
@@ -87,9 +91,16 @@ class JoinGameScreen extends StatelessWidget {
               color: Colors.white,
             ),
             onTap: () {
+              if(game['current_players'] >= game['max_players']) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Game is full!")),
+                );
+                return;
+              } 
+
               _showJoinGameDialog(
                 context,
-                game['id'],
+                snapshot.data!.docs[index].id,
                 game['room_name'],
                 game['password'] != null,
                 game['password'],
@@ -101,7 +112,7 @@ class JoinGameScreen extends StatelessWidget {
     );
   }
 
-  void _showJoinGameDialog(BuildContext context, String roomId, String roomName, bool requiresPassword, String? correctPassword) {
+  void _showJoinGameDialog(BuildContext context, String roomId, String room_name, bool requiresPassword, String? correctPassword) {
     final TextEditingController playerNameController = TextEditingController();
     final TextEditingController passwordController = TextEditingController();
 
@@ -109,7 +120,7 @@ class JoinGameScreen extends StatelessWidget {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text("Join $roomName"),
+          title: Text("Join $room_name"),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -161,22 +172,35 @@ class JoinGameScreen extends StatelessWidget {
   }
 
   Future<void> _joinGame(BuildContext context, String roomId, String playerName) async {
-    final roomRef = FirebaseFirestore.instance.collection('hosted_games').doc(roomId);
+    final firestoreController = FirestoreController();
 
-    // Update Firestore with the new player
-    await roomRef.update({
-      'players': FieldValue.arrayUnion([playerName])
-    });
+    // Spieler dem Spiel hinzufügen
+    await firestoreController.addPlayer(roomId, playerName);
 
-    // Starte das Spiel mit Flame
+    // Lade Spielinformationen aus Firestore
+    final gameSnapshot = await FirebaseFirestore.instance.collection('games').doc(roomId).get();
+    if (!gameSnapshot.exists) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Game not found!")),
+      );
+      return;
+    }
+
+    // Spieler aus Firestore laden
+    final playersSnapshot = await FirebaseFirestore.instance
+        .collection('games')
+        .doc(roomId)
+        .collection('players')
+        .get();
+
+    // Spiel starten
     final game = TelefunkenGame(
+      gameId: roomId,
       playerName: playerName,
-      playerCount: 0, // Dynamisch aus Firestore laden
-      roundDuration: const Duration(seconds: 60), // Beispielwert
-      ruleSet: RuleSet.fromName("Standard"), // Dynamisch aus Firestore laden
-      firestoreController: FirestoreController(),
+      firestoreController: firestoreController,
     );
 
+    // Navigiere zur Spielansicht
     Navigator.push(
       context,
       MaterialPageRoute(

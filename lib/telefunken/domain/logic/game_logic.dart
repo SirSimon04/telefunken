@@ -12,10 +12,12 @@ import '../rules/rule_set.dart';
 import '../../presentation/game/telefunken_game.dart';
 
 class GameLogic {
-  final List<Player> players;
-  final RuleSet ruleSet;
+  final String gameId;
   final FirestoreController firestoreController;
 
+  late List<Player> players;
+  late int maxPlayers;
+  late RuleSet ruleSet;
   late Deck deck;
   final List<List<CardEntity>> table = [];
   final List<CardEntity> discardPile = [];
@@ -24,22 +26,25 @@ class GameLogic {
   late int roundNumber;
   late List<List<CardEntity>> currentMoves = [];
 
-  final String gameId; // Firestore Game ID
-
   GameLogic({
-    required this.players,
-    required this.ruleSet,
-    required this.firestoreController,
     required this.gameId,
+    required this.firestoreController,
     this.currentPlayerIndex = 0,
     this.roundNumber = 1,
   });
 
   // Starte das Spiel und synchronisiere mit Firestore
   Future<void> startGame() async {
+    // Hole die Spieler und Regelwerk aus Firestore
+    final gameSnapshot = await firestoreController.getGame(gameId);
+    final gameData = gameSnapshot.data()!;
+    final playersData = await firestoreController.getPlayers(gameId);
+    players = playersData.map((playerData) => Player.fromMap(playerData)).toList();
+    ruleSet = RuleSet.fromName(gameData['rules']);
+    maxPlayers = gameData['max_players'] as int;
+
     deck = Deck();
-    //pl//ayers.shuffle();
-    players.reverse();
+    players.shuffle();
     deck.shuffle();
 
     int cardsToDeal = players.length * 11 + 1;
@@ -123,7 +128,7 @@ class GameLogic {
     }
   }
 
-  bool isPlayersTurn(int playerID){
+  bool isPlayersTurn(String playerID){
     return players[currentPlayerIndex].id == playerID;
   }
 
@@ -233,6 +238,11 @@ class GameLogic {
             (group as List).map((card) => CardEntity.fromMap(card)).toList()));
         discardPile.clear();
         discardPile.addAll((data['discardPile'] as List).map((card) => CardEntity.fromMap(card)));
+
+        if(data['isGameStarted'] == true) {
+          // Spiel gestartet, führe weitere Aktionen aus
+          print("Game started with players: ${players.map((p) => p.name).join(', ')}");
+        }
       }
     });
   }
