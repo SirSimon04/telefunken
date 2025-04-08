@@ -1,9 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flame/game.dart';
-import 'package:telefunken/telefunken/domain/entities/player.dart';
-import 'package:telefunken/telefunken/domain/logic/game_logic.dart';
-import 'package:telefunken/telefunken/domain/rules/rule_set.dart';
 import 'package:telefunken/telefunken/presentation/game/telefunken_game.dart';
 import 'package:telefunken/telefunken/service/firestore_controller.dart';
 import 'base_screen.dart';
@@ -175,7 +172,7 @@ class JoinGameScreen extends StatelessWidget {
     final firestoreController = FirestoreController();
 
     // Spieler dem Spiel hinzufügen
-    await firestoreController.addPlayer(roomId, playerName);
+    String playerId = await firestoreController.addPlayer(roomId, playerName);
 
     // Lade Spielinformationen aus Firestore
     final gameSnapshot = await FirebaseFirestore.instance.collection('games').doc(roomId).get();
@@ -186,16 +183,10 @@ class JoinGameScreen extends StatelessWidget {
       return;
     }
 
-    // Spieler aus Firestore laden
-    final playersSnapshot = await FirebaseFirestore.instance
-        .collection('games')
-        .doc(roomId)
-        .collection('players')
-        .get();
-
     // Spiel starten
     final game = TelefunkenGame(
       gameId: roomId,
+      playerId: playerId,
       playerName: playerName,
       firestoreController: firestoreController,
     );

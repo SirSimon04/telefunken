@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flame/game.dart';
 import 'package:telefunken/telefunken/presentation/screens/home/components/menu_buttons.dart';
-import 'package:telefunken/telefunken/presentation/screens/home/main_menu_overlay.dart';
 import 'telefunken/presentation/screens/home/home_screen.dart';
-import 'telefunken/presentation/screens/game_screen.dart';
 import 'telefunken/presentation/screens/settings_screen.dart';
 import 'telefunken/presentation/screens/join_game_screen.dart';
 import 'telefunken/presentation/screens/host_game_screen.dart';
