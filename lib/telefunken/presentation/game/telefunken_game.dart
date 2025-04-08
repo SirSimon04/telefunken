@@ -26,6 +26,8 @@ class TelefunkenGame extends FlameGame with TapDetector {
   late SpriteComponent deckUI;
   late Rect discardZone;
   late Rect tableZone;
+  
+  bool _isGameLogicInitialized = false;
 
   TelefunkenGame({
     required this.gameId,
@@ -83,9 +85,10 @@ class TelefunkenGame extends FlameGame with TapDetector {
       final currentPlayers = data['current_players'] ?? 0;
       maxPlayers = data['max_players'] ?? 0;
 
-      // Prüfen, ob das Spiel gestartet wurde
+      // Check if the game has started
       final isGameStarted = data['isGameStarted'] ?? false;
-      if (isGameStarted) {
+      if (isGameStarted && !_isGameLogicInitialized) {
+        _isGameLogicInitialized = true; // Prevent reinitialization
         _initializeGameLogic();
       } else {
         _updateWaitingText(currentPlayers);
@@ -318,23 +321,19 @@ class TelefunkenGame extends FlameGame with TapDetector {
   void onTapDown(TapDownInfo info) {
     final tapPosition = info.eventPosition.global;
 
+    if(!gameLogic!.isPlayersTurn(playerId)) return;
+    //später den buy button available lassen
+
     // Prüfen, ob auf das Deck geklickt wurde
     if (deckUI.toRect().contains(tapPosition.toOffset())) {
       if (gameLogic != null && !gameLogic!.hasDrawnCard) {
         gameLogic!.drawCard('deck');
         updateUI();
-      } else {
-        return;
       }
-    }
-
-    // Prüfen, ob auf den Discard-Pile geklickt wurde
-    if (discardZone.contains(tapPosition.toOffset())) {
+    }else if (discardZone.contains(tapPosition.toOffset())) {
       if (gameLogic != null && !gameLogic!.hasDrawnCard) {
         gameLogic!.drawCard('discardPile');
         updateUI();
-      } else {
-        return;
       }
     }
   }
