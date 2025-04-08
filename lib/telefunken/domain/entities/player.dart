@@ -13,7 +13,6 @@ class Player {
   Player({required this.id, required this.name, this.isAI = false, this.isOut = false});
 
   void addCardToHand(CardEntity card) {
-    card.isUp = true;
     hand.add(card);
   }
 

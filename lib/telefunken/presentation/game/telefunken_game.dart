@@ -94,9 +94,14 @@ class TelefunkenGame extends FlameGame with TapDetector {
     firestoreController.listenToGameState(gameId).listen((snapshot) {
       if (snapshot.exists) {
         final data = snapshot.data()!;
+        if (data['isGameOver'] == true) {
+          showWinningScreen();
+          return;
+        }
         final currentPlayers = data['current_players'] ?? 0;
         maxPlayers = data['max_players'] ?? 0;
         _updateWaitingText(currentPlayers);
+        updateUI();
       }
     });
   }
@@ -291,7 +296,8 @@ class TelefunkenGame extends FlameGame with TapDetector {
   }
 
   void handleCardsDrop(List<CardComponent> group) {
-    if (!gameLogic!.isPlayersTurn(gameLogic!.players[playerIndex].id)) {
+    if (!gameLogic!.isPlayersTurn(gameLogic!.players[playerIndex].id) || 
+        gameLogic!.isPaused()) {
       print("Nicht dein Zug! Aktion abgebrochen.");
       resetGroupToOriginalPosition(group);
       CardComponent.selectedCards.clear();
@@ -325,5 +331,20 @@ class TelefunkenGame extends FlameGame with TapDetector {
         EffectController(duration: 0.5, curve: Curves.easeOut),
       ));
     }
+  }
+
+  void showWinningScreen() async {
+    final gameSnapshot = await firestoreController.getGame(gameId);
+    final winner = gameSnapshot.data()?['winner'] ?? 'Unbekannt';
+
+    final winningText = TextComponent(
+      text: 'Spieler $winner hat gewonnen!',
+      textRenderer: TextPaint(
+        style: const TextStyle(fontSize: 48, color: Colors.black),
+      ),
+      position: Vector2(size.x / 2, size.y / 2),
+      anchor: Anchor.center,
+    );
+    add(winningText);
   }
 }

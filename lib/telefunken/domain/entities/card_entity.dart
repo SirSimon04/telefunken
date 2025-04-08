@@ -1,9 +1,8 @@
 class CardEntity {
   final String suit;
   final String rank;
-  bool isUp;
 
-  CardEntity({required this.suit, required this.rank, this.isUp = false});
+  CardEntity({required this.suit, required this.rank});
 
   @override
   String toString() {
@@ -15,7 +14,6 @@ class CardEntity {
     return {
       'suit': suit,
       'rank': rank,
-      'isUp': isUp,
     };
   }
 
@@ -24,7 +22,6 @@ class CardEntity {
     return CardEntity(
       suit: map['suit'] as String,
       rank: map['rank'] as String,
-      isUp: map['isUp'] as bool? ?? false,
     );
   }
 

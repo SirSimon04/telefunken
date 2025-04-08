@@ -25,6 +25,7 @@ class GameLogic {
   late int currentPlayerIndex;
   late int roundNumber;
   late List<List<CardEntity>> currentMoves = [];
+  late bool paused = false;
 
   GameLogic({
     required this.gameId,
@@ -54,10 +55,12 @@ class GameLogic {
       sortPlayersHand(player);
     }
 
-    // Synchronisiere den initialen Spielstatus mit Firestore
+    final tableMap = {
+      for (int i = 0; i < table.length; i++) i.toString(): table[i].map((card) => card.toMap()).toList(),
+    };
     await firestoreController.updateGameState(gameId, {
       'currentPlayer': players[currentPlayerIndex].id,
-      'table': table.map((group) => group.map((card) => card.toMap()).toList()).toList(),
+      'table': tableMap,
       'discardPile': discardPile.map((card) => card.toMap()).toList(),
       'isGameStarted': true,
     });
@@ -102,6 +105,7 @@ class GameLogic {
 
     await firestoreController.updateGameState(gameId, {
       'currentPlayer': players[currentPlayerIndex].id,
+      'discardPile': discardPile.map((card) => card.toMap()).toList(),
     });
   }
 
@@ -128,6 +132,10 @@ class GameLogic {
     }
   }
 
+  bool isPaused(){
+    return paused;
+  }
+
   bool isPlayersTurn(String playerID){
     return players[currentPlayerIndex].id == playerID;
   }
@@ -151,6 +159,11 @@ class GameLogic {
       if(ruleSet.validateDiscard(card)){
         discardPile.add(card);
         players[currentPlayerIndex].removeCardFromHand(card);
+
+        firestoreController.updateGameState(gameId, {
+          'discardPile': discardPile.map((card) => card.toMap()).toList(),
+        });
+
         checkForWin();
         nextTurn();
         return true;
@@ -162,6 +175,11 @@ class GameLogic {
         addCurrentMovesToTable();
         removeCurrentMovesFromPlayersHand();
         players[currentPlayerIndex].isOut = true;
+
+        firestoreController.updateGameState(gameId, {
+          'discardPile': discardPile.map((card) => card.toMap()).toList(),
+        });
+
         checkForWin();
         nextTurn();
         return true;
@@ -177,11 +195,24 @@ class GameLogic {
     for (var move in currentMoves) {
       table.add(move);
     }
+    final tableMap = {
+      for (int i = 0; i < table.length; i++) i.toString(): table[i].map((card) => card.toMap()).toList(),
+    };
+    firestoreController.updateGameState(gameId, {
+      'table': tableMap,
+    });
   }
 
-  bool checkForWin(){
-    if(players[currentPlayerIndex].hand.length == 0){
+  bool checkForWin() {
+    if (players[currentPlayerIndex].hand.isEmpty) {
       print("Player ${players[currentPlayerIndex].name} has won the game!");
+      paused = true;
+      calculatePoints();
+      Player winningPlayer = getWinnigPlayer();
+      firestoreController.updateGameState(gameId, {
+        'winner': winningPlayer.name,
+        'isGameOver': true,
+      });
       return true;
     }
     return false;
@@ -226,24 +257,37 @@ class GameLogic {
     currentMoves.clear();
   }
 
-  // Beobachte Änderungen im Spielstatus
   void listenToGameState() {
     firestoreController.listenToGameState(gameId).listen((snapshot) {
       if (snapshot.exists) {
         final data = snapshot.data()!;
-        // Aktualisiere den lokalen Spielstatus basierend auf Firestore-Daten
+
         currentPlayerIndex = players.indexWhere((p) => p.id == data['currentPlayer']);
         table.clear();
-        table.addAll((data['table'] as List).map((group) =>
+        final tableMap = data['table'] as Map<String, dynamic>;
+        table.addAll(tableMap.values.map((group) =>
             (group as List).map((card) => CardEntity.fromMap(card)).toList()));
+
         discardPile.clear();
         discardPile.addAll((data['discardPile'] as List).map((card) => CardEntity.fromMap(card)));
 
-        if(data['isGameStarted'] == true) {
-          // Spiel gestartet, führe weitere Aktionen aus
-          print("Game started with players: ${players.map((p) => p.name).join(', ')}");
-        }
+        paused = data['isGamePaused'] ?? false;
       }
     });
   }
+
+
+  ///ToDo:
+  /// - Update die Spielerhände von den anderen
+  /// - Gerade ist es Random ob die Reiehnfolge der Spieler richtig angezeigt wird.
+  /// - Wenn man mehrere Karten hochzieht und ablegen möchte sind sie manchmal noch weit auseinander. Bspw 2, 9, 9. Sie sollen beim "verschieben" nebeneinander angezeigt werden
+  /// - Gerade ist der Fehler, wenn die Karten zum Ursprung zurück "fliegen", dann sind sie doppelt da..
+  /// - Anstelle vom eigenen Namen soll da einfach "You" stehen
+  /// - Karten ziehen implementieren: Zu Rundenbeginn !MUSS! eine Karte entweder vom Kartenstapel oder vom Ablagestapel gezogen werden!! In dieser Zeit kann der Spieler keine Karten ablegen
+  /// - Regelwerk überarbeiten
+  /// - Punktevergabe überarbeiten und Punktzahl neben dem Spieler anzeigen 
+  /// - Rundencounter in die Ecke hauen
+  /// - Am Spielende soll das Spielfeld 3 Sekunden lang stehen bleiben, dann navigiert man zu einer neuen Seite, wo eine Tabelle mit den Spieler und der Punkte und den bekommenen Punkten per Runde angezeigt wird.
+  /// - Karten an andere Karten anlegen können
+  /// - Bei den anlegenden Karten schauen ob man einen Joker ersetzen und benutzen kann
 }

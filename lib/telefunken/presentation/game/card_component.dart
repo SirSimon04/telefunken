@@ -73,14 +73,11 @@ class CardComponent extends SpriteComponent with TapCallbacks, DragCallbacks, Co
 
   @override
   void onDragStart(DragStartEvent event) {
-    if (!isPlayersMove() || ownerId == -1) {
-      print("Nicht dein Zug! Du kannst keine Karten ziehen.");
+    if (!isPlayersMove() || ownerId == -1 || gameLogic.isPaused()) {
       return;
     }
 
-    // Überprüfe, ob die Liste der ausgewählten Karten korrekt ist
     if (selectedCards.isEmpty || !selectedCards.contains(this)) {
-      print("Keine gültige Gruppe ausgewählt.");
       return;
     }
 
@@ -90,7 +87,7 @@ class CardComponent extends SpriteComponent with TapCallbacks, DragCallbacks, Co
 
   @override
   void onDragUpdate(DragUpdateEvent event) {
-    if (!isPlayersMove() || ownerId == -1) {
+    if (!isPlayersMove() || ownerId == -1 || gameLogic.isPaused()) {
       return;
     }
 
@@ -105,11 +102,10 @@ class CardComponent extends SpriteComponent with TapCallbacks, DragCallbacks, Co
 
   @override
   void onDragEnd(DragEndEvent event) {
-    if (!isPlayersMove() || ownerId == -1) {
+    if (!isPlayersMove() || ownerId == -1 || gameLogic.isPaused()) {
       return;
     }
 
-    // Kopiere die Liste, um ConcurrentModificationError zu vermeiden
     final selectedCardsCopy = List<CardComponent>.from(selectedCards);
 
     if (onCardsDropped != null && selectedCardsCopy.isNotEmpty) {
