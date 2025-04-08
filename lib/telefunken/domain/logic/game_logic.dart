@@ -38,7 +38,6 @@ class GameLogic {
       final gameData = gameSnapshot.data()!;
 
       final playersData = await firestoreController.getPlayers(gameId);
-      print(playersData);
 
       players = playersData.map((playerData) {
         final player = Player.fromMap(playerData);
@@ -84,10 +83,6 @@ class GameLogic {
       } catch (e) {
         print('Error processing discard pile data: $e');
       }
-
-      // Set the current player
-      currentPlayerIndex = players.indexWhere((player) => player.id == gameData['currentPlayer']);
-      print('Current player index: $currentPlayerIndex');
     } catch (e) {
       print('Error syncing with Firestore: $e');
     }
@@ -109,7 +104,7 @@ class GameLogic {
   }
 
   // Karte ziehen
-  void drawCard(String source) {
+  void drawCard(String source) async {
     if (hasDrawnCard) {
       print("You have already drawn a card this turn.");
       return;
@@ -128,10 +123,16 @@ class GameLogic {
     players[currentPlayerIndex].addCardToHand(drawnCard);
     hasDrawnCard = true;
 
-    firestoreController.updateGameState(gameId, {
-      'players.${players[currentPlayerIndex].id}.hand': players[currentPlayerIndex].hand.map((card) => card.toMap()).toList(),
-      'discardPile': discardPile.map((card) => card.toMap()).toList(),
-    });
+
+    try {
+      final playerId = players[currentPlayerIndex].id;
+      await firestoreController.updateGameState(gameId, {
+        'players.$playerId.hand': players[currentPlayerIndex].hand.map((card) => card.toMap()).toList(),
+        'discardPile': discardPile.map((card) => card.toMap()).toList(),
+      });
+    } catch (e) {
+      print('Error updating game state: $e');
+    }
 
     print("Player ${players[currentPlayerIndex].name} drew a card from $source.");
   }
@@ -158,8 +159,8 @@ class GameLogic {
     return paused;
   }
 
-  bool isPlayersTurn(String playerID){
-    return players[currentPlayerIndex].id == playerID;
+  bool isPlayersTurn(String playerId){
+    return players[currentPlayerIndex].id == playerId;
   }
 
   // Validierung von Zügen

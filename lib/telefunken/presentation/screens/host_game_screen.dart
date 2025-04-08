@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:telefunken/telefunken/presentation/game/telefunken_game.dart';
 import 'package:telefunken/telefunken/service/firestore_controller.dart';
 import 'base_screen.dart';
+import 'dart:async';
 
 class HostGameScreen extends StatefulWidget {
   const HostGameScreen({super.key});
@@ -13,6 +14,7 @@ class HostGameScreen extends StatefulWidget {
 
 class _HostGameScreenState extends State<HostGameScreen> {
   final _formKey = GlobalKey<FormState>();
+  StreamSubscription? gameStateSubscription; // Add this to manage the subscription
 
   // Controller und Variablen
   final TextEditingController _playerNameController = TextEditingController();
@@ -20,9 +22,9 @@ class _HostGameScreenState extends State<HostGameScreen> {
   final TextEditingController _passwordController = TextEditingController();
 
   // Dropdowns
-  int _selectedPlayers = 2; // Standardanzahl
-  String _selectedRuleSet = 'Standard'; // Beispielregelwerk
-  String _selectedRoundDuration = '60'; // Rundendauer in Sekunden
+  int _selectedPlayers = 2;
+  String _selectedRuleSet = 'Standard';
+  String _selectedRoundDuration = '60';
 
   bool _usePassword = false;
 
@@ -36,6 +38,7 @@ class _HostGameScreenState extends State<HostGameScreen> {
     _playerNameController.dispose();
     _roomNameController.dispose();
     _passwordController.dispose();
+    gameStateSubscription?.cancel(); // Cancel the subscription when the widget is disposed
     super.dispose();
   }
 
@@ -88,12 +91,11 @@ class _HostGameScreenState extends State<HostGameScreen> {
           ),
         );
 
-        // Warten, bis alle Spieler beigetreten sind
-        firestoreController.listenToGameState(gameId).listen((snapshot) async {
+        gameStateSubscription?.cancel();
+        gameStateSubscription = firestoreController.listenToGameState(gameId).listen((snapshot) async {
           final data = snapshot.data();
           if (data != null && data['current_players'] == maxPlayers && !data['isGameStarted']) {
             await Future.delayed(const Duration(milliseconds: 500));
-
             await firestoreController.startGame(gameId);
             await firestoreController.updateGameState(gameId, {
               'isGameStarted': true,
