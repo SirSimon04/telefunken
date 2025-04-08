@@ -95,6 +95,7 @@ class GameLogic {
   // Nächster Spieler und Synchronisation
   Future<void> nextTurn() async {
     currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+    
     hasDrawnCard = false;
 
     await firestoreController.updateGameState(gameId, {
