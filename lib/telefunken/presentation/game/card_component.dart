@@ -7,7 +7,7 @@ import 'package:telefunken/telefunken/domain/logic/game_logic.dart';
 
 class CardComponent extends SpriteComponent with TapCallbacks, DragCallbacks, CollisionCallbacks {
   final CardEntity card;
-  late String? ownerId;
+  String? ownerId;
   final GameLogic gameLogic;
   final void Function(List<CardComponent>)? onCardsDropped;
   final void Function(CardComponent)? onHighlightChanged;
@@ -15,7 +15,7 @@ class CardComponent extends SpriteComponent with TapCallbacks, DragCallbacks, Co
   Vector2? originalPosition;
   Vector2? lastPointerPosition;
 
-  static List<CardComponent> selectedCards = [];
+  static Set<CardComponent> selectedCards = {};
 
   CardComponent({
     required this.card,
@@ -41,57 +41,51 @@ class CardComponent extends SpriteComponent with TapCallbacks, DragCallbacks, Co
 
   @override
   void onTapDown(TapDownEvent event) {
-    // Überprüfe, ob die Karte einen gültigen Besitzer hat
-    if (ownerId == -1) {
-      print("Diese Karte hat keinen Besitzer und kann nicht ausgewählt werden.");
+    if (ownerId == null) {
       return;
     }
 
-    // Toggle die Hervorhebung der Karte
     isHighlighted = !isHighlighted;
+    position.add(Vector2(0, isHighlighted ? -10 : 10));
 
     if (isHighlighted) {
-      selectedCards.add(this); // Karte zur Gruppe hinzufügen
-      position.add(Vector2(0, -10)); // Karte nach oben verschieben
+      selectedCards.add(this);
     } else {
-      selectedCards.remove(this); // Karte aus der Gruppe entfernen
-      position.add(Vector2(0, 10)); // Karte zurück nach unten verschieben
+      selectedCards.remove(this);
     }
 
     onHighlightChanged?.call(this);
   }
 
-  bool isPlayersMove(){
+  bool isPlayersMove() {
     return gameLogic.players[gameLogic.currentPlayerIndex].id == ownerId;
   }
 
   void removeOwner() {
     ownerId = null;
     originalPosition = null;
-    print("Nutzerspezifische Eigenschaften der Karte wurden entfernt.");
   }
 
   @override
   void onDragStart(DragStartEvent event) {
-    if (!isPlayersMove() || ownerId == -1 || gameLogic.isPaused()) {
+    if (!isPlayersMove() || ownerId == null || gameLogic.isPaused()) {
       return;
     }
 
     if (selectedCards.isEmpty || !selectedCards.contains(this)) {
-      return;
+            return;
     }
 
     super.onDragStart(event);
-    priority = 10; // Setze die Priorität höher, damit die Karte über anderen Elementen liegt
+    priority = 10;
   }
 
   @override
   void onDragUpdate(DragUpdateEvent event) {
-    if (!isPlayersMove() || ownerId == -1 || gameLogic.isPaused()) {
+    if (!isPlayersMove() || ownerId == null || gameLogic.isPaused()) {
       return;
     }
 
-    // Kopiere die Liste, um ConcurrentModificationError zu vermeiden
     final selectedCardsCopy = List<CardComponent>.from(selectedCards);
 
     for (var card in selectedCardsCopy) {
@@ -102,16 +96,19 @@ class CardComponent extends SpriteComponent with TapCallbacks, DragCallbacks, Co
 
   @override
   void onDragEnd(DragEndEvent event) {
-    if (!isPlayersMove() || ownerId == -1 || gameLogic.isPaused()) {
-      return;
-    }
+    try {
+      if (!isPlayersMove() || ownerId == null || gameLogic.isPaused()) {
+        return;
+      }
 
-    final selectedCardsCopy = List<CardComponent>.from(selectedCards);
+      final selectedCardsCopy = List<CardComponent>.unmodifiable(selectedCards);
 
-    if (onCardsDropped != null && selectedCardsCopy.isNotEmpty) {
-      onCardsDropped!(selectedCardsCopy);
+      if (onCardsDropped != null && selectedCardsCopy.isNotEmpty) {
+        onCardsDropped!(selectedCardsCopy.toList());
+      }
+    } finally {
+      priority = 0;
     }
     super.onDragEnd(event);
-    priority = 0;
   }
 }
