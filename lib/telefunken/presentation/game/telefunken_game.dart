@@ -4,8 +4,6 @@ import 'package:flame/events.dart';
 import 'package:flame/game.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
-import 'package:telefunken/telefunken/domain/entities/card_entity.dart';
-import 'package:telefunken/telefunken/domain/rules/rule_set.dart';
 import 'package:telefunken/telefunken/presentation/game/card_component.dart';
 import 'package:telefunken/telefunken/service/firestore_controller.dart';
 import '../../domain/entities/player.dart';
@@ -13,6 +11,7 @@ import '../../domain/logic/game_logic.dart';
 
 class TelefunkenGame extends FlameGame with TapDetector {
   final String gameId;
+  final String playerId;
   final String playerName;
   final FirestoreController firestoreController;
 
@@ -30,6 +29,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
 
   TelefunkenGame({
     required this.gameId,
+    required this.playerId,
     required this.playerName,
     required this.firestoreController,
   });
@@ -55,35 +55,20 @@ class TelefunkenGame extends FlameGame with TapDetector {
     );
     add(deckUI);
 
-    discardZone = Rect.fromLTWH(
-      deckPosition.x + 10,
-      deckPosition.y - 70,
-      50,
-      70,
-    );
-
-    tableZone = Rect.fromLTWH(
-      10,
-      350,
-      size.x - 10,
-      size.y - 600,
-    );
+    discardZone = Rect.fromLTWH(deckPosition.x + 10, deckPosition.y - 70, 50, 70);
+    tableZone = Rect.fromLTWH(10, 350, size.x - 10, size.y - 600);
 
     cardsLeftText = TextComponent(
       text: 'Cards left: 108',
-      textRenderer: TextPaint(
-        style: const TextStyle(fontSize: 18, color: Colors.white),
-      ),
+      textRenderer: TextPaint(style: const TextStyle(fontSize: 18, color: Colors.white)),
       position: deckPosition + Vector2(0, 50),
       anchor: Anchor.center,
     );
     add(cardsLeftText);
 
     waitingForPlayersText = TextComponent(
-      text: 'Waiting for Players...',
-      textRenderer: TextPaint(
-        style: const TextStyle(fontSize: 24, color: Colors.white),
-      ),
+      text: 'Waiting for players:',
+      textRenderer: TextPaint(style: const TextStyle(fontSize: 24, color: Colors.white)),
       position: Vector2(size.x / 2, size.y / 2),
       anchor: Anchor.center,
     );
@@ -92,56 +77,49 @@ class TelefunkenGame extends FlameGame with TapDetector {
 
   void _observeGameState() {
     firestoreController.listenToGameState(gameId).listen((snapshot) {
-      if (snapshot.exists) {
-        final data = snapshot.data()!;
-        if (data['isGameOver'] == true) {
-          showWinningScreen();
-          return;
-        }
-        final currentPlayers = data['current_players'] ?? 0;
-        maxPlayers = data['max_players'] ?? 0;
+      final data = snapshot.data();
+      if (data == null) return;
+
+      final currentPlayers = data['current_players'] ?? 0;
+      maxPlayers = data['max_players'] ?? 0;
+
+      // Prüfen, ob das Spiel gestartet wurde
+      final isGameStarted = data['isGameStarted'] ?? false;
+      if (isGameStarted) {
+        _initializeGameLogic();
+      } else {
         _updateWaitingText(currentPlayers);
-        updateUI();
       }
     });
   }
 
-
-  void _updateWaitingText([int? currentPlayers]) {
-    if (currentPlayers == maxPlayers) {
-      waitingForPlayersText.text = 'All players joined. Starting game...';
-      print("All players joined. Starting game...");
-      Future.delayed(const Duration(seconds: 1), () async {
-        remove(waitingForPlayersText);
-        _initializeGameLogic();
-      });
-    } else {
-      waitingForPlayersText.text = 'Waiting for players...';
-    }
+  void _updateWaitingText(int currentPlayers) {
+    waitingForPlayersText.text = 'Waiting for players: $currentPlayers / $maxPlayers';
   }
 
   void _initializeGameLogic() async {
+    if (waitingForPlayersText.parent != null) {
+      remove(waitingForPlayersText);
+    }
     gameLogic = GameLogic(
       gameId: gameId,
       firestoreController: firestoreController,
     );
-    await gameLogic!.startGame();
+
+    await gameLogic!.syncWithFirestore();
     gameLogic!.listenToGameState();
 
     _displayPlayers(gameLogic!.players);
-    playerIndex = gameLogic!.players.indexWhere((player) => player.name == playerName);
+    playerIndex = gameLogic!.players.indexWhere((player) => player.id == playerId);
     _distributeCards(deckPosition);
   }
 
   void _displayPlayers(List<Player> players) {
     final radius = 180.0;
     for (int i = 0; i < players.length; i++) {
-      final double startAngle = pi / 3;
-      final double endAngle = 2 * pi / 3;
-      double angle = startAngle;
-      if (players.length > 1) {
-        angle = startAngle + (endAngle - startAngle) * (i / (players.length - 1));
-      }
+      final angle = players.length > 1
+          ? pi / 3 + (2 * pi / 3 - pi / 3) * (i / (players.length - 1))
+          : pi / 3;
       final playerPos = deckPosition - Vector2(radius * cos(angle), radius * sin(angle));
       playerPositions[players[i].name] = playerPos;
       add(TextComponent(
@@ -186,72 +164,68 @@ class TelefunkenGame extends FlameGame with TapDetector {
 
   void _updateCardsLeftText([int? cardsLeft]) {
     cardsLeftText.text = 'Cards left: ${cardsLeft ?? gameLogic?.getDeckLength() ?? 0}';
-    if ((gameLogic?.getDeckLength() ?? 0) == 0) {
-      remove(deckUI);
-    }
+    if ((gameLogic?.getDeckLength() ?? 0) == 0) remove(deckUI);
   }
 
   void displayCurrentPlayerHand() async {
     children.whereType<CardComponent>().forEach(remove);
 
-    final int cardCount = gameLogic!.players[playerIndex].hand.length;
-    final double cardWidth = 50.0;
-    final double minSpacing = 15.0;
-    final double maxSpacing = 50.0;
-    final double totalWidth = (cardCount - 1) * maxSpacing + cardWidth;
-    double spacing = totalWidth > size.x ? (size.x - cardWidth) / (cardCount - 1) : maxSpacing;
-    spacing = spacing.clamp(minSpacing, maxSpacing);
-    final double handWidth = (cardCount - 1) * spacing + cardWidth;
-    final Vector2 startPos = Vector2((size.x - handWidth) / 2, size.y - 150);
+    final cardCount = gameLogic!.players[playerIndex].hand.length;
+    final cardWidth = 50.0;
+    final minSpacing = 15.0;
+    final maxSpacing = 50.0;
+    final totalWidth = (cardCount - 1) * maxSpacing + cardWidth;
+    final spacing = totalWidth > size.x ? (size.x - cardWidth) / (cardCount - 1) : maxSpacing;
+    final handWidth = (cardCount - 1) * spacing + cardWidth;
+    final startPos = Vector2((size.x - handWidth) / 2, size.y - 150);
 
     for (int i = 0; i < cardCount; i++) {
-      final Vector2 pos = startPos + Vector2(i * spacing, 0);
+      final pos = startPos + Vector2(i * spacing, 0);
       final card = gameLogic!.players[playerIndex].hand[i];
-      final cardComponent = CardComponent(
+      add(CardComponent(
         card: card,
         ownerId: gameLogic!.players[playerIndex].id,
         gameLogic: gameLogic!,
         onCardsDropped: handleCardsDrop,
         position: pos,
-      );
-      add(cardComponent);
+      ));
     }
   }
 
   void displayOpponentsHand() async {
-    final double cardWidth = 30.0;
-    final double spacing = 10.0;
+    final cardWidth = 30.0;
+    final spacing = 10.0;
 
     for (var player in gameLogic!.players) {
+      if (player.id == gameLogic!.players[playerIndex].id) continue;
 
-      if (player.id != gameLogic!.players[playerIndex].id) {
-            final int cardCount = player.hand.length;
-        final Vector2 playerPos = playerPositions[player.name] ?? Vector2.zero();
-        final Vector2 startPos = playerPos + Vector2(-((cardCount - 1) * spacing + cardWidth) / 2, 20);
-        for (int i = 0; i < cardCount; i++) {
-          final Vector2 pos = startPos + Vector2(i * spacing, 0);
-          add(SpriteComponent()
-            ..sprite = await loadSprite('cards/Back_Red.png')
-            ..position = pos
-            ..anchor = Anchor.topLeft
-            ..size = Vector2(cardWidth, 42)
-            ..priority = 1);
-        }
+      final cardCount = player.hand.length;
+      final playerPos = playerPositions[player.name] ?? Vector2.zero();
+      final startPos = playerPos + Vector2(-((cardCount - 1) * spacing + cardWidth) / 2, 20);
+
+      for (int i = 0; i < cardCount; i++) {
+        final pos = startPos + Vector2(i * spacing, 0);
+        add(SpriteComponent()
+          ..sprite = await loadSprite('cards/Back_Red.png')
+          ..position = pos
+          ..anchor = Anchor.topLeft
+          ..size = Vector2(cardWidth, 42)
+          ..priority = 1);
       }
     }
   }
 
-  void showTable() async{
-    const double cardWidth = 30.0;
-    const double cardHeight = 50.0;
-    const double groupPadding = 20.0;
-    const double cardSpacing = -10.0;
+  void showTable() async {
+    const cardWidth = 30.0;
+    const cardHeight = 50.0;
+    const groupPadding = 20.0;
+    const cardSpacing = -10.0;
 
     double currentX = tableZone.left;
     double currentY = tableZone.top;
 
     for (var group in gameLogic!.table) {
-      final double groupWidth = group.length * (cardWidth + cardSpacing) - cardSpacing;
+      final groupWidth = group.length * (cardWidth + cardSpacing) - cardSpacing;
 
       if (currentX + groupWidth > tableZone.right) {
         currentX = tableZone.left;
@@ -260,11 +234,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
 
       for (int i = 0; i < group.length; i++) {
         final card = group[i];
-        final Vector2 position = Vector2(
-          currentX + i * (cardWidth + cardSpacing),
-          currentY,
-        );
-
+        final position = Vector2(currentX + i * (cardWidth + cardSpacing), currentY);
         add(SpriteComponent()
           ..sprite = Sprite(await images.load('cards/${card.suit}${card.rank}.png'))
           ..position = position
@@ -275,12 +245,13 @@ class TelefunkenGame extends FlameGame with TapDetector {
     }
   }
 
-  void showDiscardPile() async{
-    const double cardWidth = 50.0;
-    const double cardHeight = 70.0;
+  void showDiscardPile() async {
+    if (gameLogic!.discardPile.isEmpty) return;
 
-    if(gameLogic!.discardPile.isEmpty) return;
+    const cardWidth = 50.0;
+    const cardHeight = 70.0;
     final card = gameLogic!.discardPile.last;
+
     add(SpriteComponent()
       ..sprite = Sprite(await images.load('cards/${card.suit}${card.rank}.png'))
       ..position = Vector2(discardZone.right, discardZone.center.dy)
@@ -288,7 +259,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
       ..anchor = Anchor.topCenter);
   }
 
-  void updateUI(){
+  void updateUI() {
     displayCurrentPlayerHand();
     displayOpponentsHand();
     showTable();
@@ -296,32 +267,30 @@ class TelefunkenGame extends FlameGame with TapDetector {
   }
 
   void handleCardsDrop(List<CardComponent> group) {
-    if (!gameLogic!.isPlayersTurn(gameLogic!.players[playerIndex].id) || 
-        gameLogic!.isPaused()) {
-      print("Nicht dein Zug! Aktion abgebrochen.");
+    if (!gameLogic!.isPlayersTurn(gameLogic!.players[playerIndex].id) || gameLogic!.isPaused()) {
       resetGroupToOriginalPosition(group);
       CardComponent.selectedCards.clear();
       return;
-    }else{
-      if(group.length == 1){
-        if(group[0].position.x > discardZone.left && group[0].position.x < discardZone.right &&
-           group[0].position.y > discardZone.top && group[0].position.y < discardZone.bottom){
-            print("Discarding");
-          if(gameLogic!.validateDiscard(group.first.card)){
-            updateUI();
-          }else{
-            resetGroupToOriginalPosition(group);
-          }
-        }
-      }else{
-        if(gameLogic!.validateMove(group.map((card) => card.card).toList())){
+    }
 
-        }else{
+    if (group.length == 1) {
+      final card = group.first;
+      if (card.position.x > discardZone.left &&
+          card.position.x < discardZone.right &&
+          card.position.y > discardZone.top &&
+          card.position.y < discardZone.bottom) {
+        if (gameLogic!.validateDiscard(card.card)) {
+          updateUI();
+        } else {
           resetGroupToOriginalPosition(group);
         }
       }
-      CardComponent.selectedCards.clear();
+    } else {
+      if (!gameLogic!.validateMove(group.map((card) => card.card).toList())) {
+        resetGroupToOriginalPosition(group);
+      }
     }
+    CardComponent.selectedCards.clear();
   }
 
   void resetGroupToOriginalPosition(List<CardComponent> group) {
@@ -337,14 +306,36 @@ class TelefunkenGame extends FlameGame with TapDetector {
     final gameSnapshot = await firestoreController.getGame(gameId);
     final winner = gameSnapshot.data()?['winner'] ?? 'Unbekannt';
 
-    final winningText = TextComponent(
+    add(TextComponent(
       text: 'Spieler $winner hat gewonnen!',
-      textRenderer: TextPaint(
-        style: const TextStyle(fontSize: 48, color: Colors.black),
-      ),
+      textRenderer: TextPaint(style: const TextStyle(fontSize: 48, color: Colors.black)),
       position: Vector2(size.x / 2, size.y / 2),
       anchor: Anchor.center,
-    );
-    add(winningText);
+    ));
+  }
+
+  @override
+  void onTapDown(TapDownInfo info) {
+    final tapPosition = info.eventPosition.global;
+
+    // Prüfen, ob auf das Deck geklickt wurde
+    if (deckUI.toRect().contains(tapPosition.toOffset())) {
+      if (gameLogic != null && !gameLogic!.hasDrawnCard) {
+        gameLogic!.drawCard('deck');
+        updateUI();
+      } else {
+        return;
+      }
+    }
+
+    // Prüfen, ob auf den Discard-Pile geklickt wurde
+    if (discardZone.contains(tapPosition.toOffset())) {
+      if (gameLogic != null && !gameLogic!.hasDrawnCard) {
+        gameLogic!.drawCard('discardPile');
+        updateUI();
+      } else {
+        return;
+      }
+    }
   }
 }

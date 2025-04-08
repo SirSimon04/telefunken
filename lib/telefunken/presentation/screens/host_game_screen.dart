@@ -1,8 +1,5 @@
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:telefunken/telefunken/domain/entities/player.dart';
-import 'package:telefunken/telefunken/domain/rules/rule_set.dart';
 import 'package:telefunken/telefunken/presentation/game/telefunken_game.dart';
 import 'package:telefunken/telefunken/service/firestore_controller.dart';
 import 'base_screen.dart';
@@ -52,10 +49,8 @@ class _HostGameScreenState extends State<HostGameScreen> {
       String ruleSet = _selectedRuleSet;
       int roundDuration = int.parse(_selectedRoundDuration);
 
-      // FirestoreController laden
       final firestoreController = FirestoreController();
 
-      // Ladeanzeige anzeigen
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -63,7 +58,6 @@ class _HostGameScreenState extends State<HostGameScreen> {
       );
 
       try {
-        // Spiel in Firestore erstellen
         String gameId = await firestoreController.createGame(
           roomName,
           playerName,
@@ -73,13 +67,14 @@ class _HostGameScreenState extends State<HostGameScreen> {
           password: password,
         );
 
-        // Host dem Spiel hinzufügen
-        await firestoreController.addPlayer(gameId, playerName);
+        String playerId = await firestoreController.addPlayer(gameId, playerName);
 
-        // Navigiere zum Spiel
-        Navigator.pop(context); // Ladeanzeige entfernen
+        Navigator.pop(context);
+
+        // Navigiere zur Spieloberfläche
         final game = TelefunkenGame(
           gameId: gameId,
+          playerId: playerId,
           playerName: playerName,
           firestoreController: firestoreController,
         );
@@ -92,8 +87,21 @@ class _HostGameScreenState extends State<HostGameScreen> {
             ),
           ),
         );
+
+        // Warten, bis alle Spieler beigetreten sind
+        firestoreController.listenToGameState(gameId).listen((snapshot) async {
+          final data = snapshot.data();
+          if (data != null && data['current_players'] == maxPlayers && !data['isGameStarted']) {
+            await Future.delayed(const Duration(milliseconds: 500));
+
+            await firestoreController.startGame(gameId);
+            await firestoreController.updateGameState(gameId, {
+              'isGameStarted': true,
+            });
+          }
+        });
       } catch (e) {
-        Navigator.pop(context); // Ladeanzeige entfernen
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Error creating game: $e")),
         );

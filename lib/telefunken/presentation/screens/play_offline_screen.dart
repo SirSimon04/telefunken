@@ -59,6 +59,7 @@ class _PlayOfflineScreenState extends State<PlayOfflineScreen> {
       // GameLogic initialisieren
       final game = TelefunkenGame(
         gameId: '2233123123',
+        playerId: '${players[0].id}',
         playerName: playerName,
         firestoreController: FirestoreController(),
       );

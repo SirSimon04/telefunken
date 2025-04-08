@@ -1,112 +1,139 @@
-import 'dart:math';
-
-import 'package:flame/image_composition.dart';
-import 'package:flutter/material.dart';
 import 'package:telefunken/telefunken/domain/entities/card_entity.dart';
-import 'package:telefunken/telefunken/presentation/game/card_component.dart';
 import 'package:telefunken/telefunken/service/firestore_controller.dart';
 
 import '../entities/deck.dart';
 import '../entities/player.dart';
 import '../rules/rule_set.dart';
-import '../../presentation/game/telefunken_game.dart';
 
 class GameLogic {
   final String gameId;
   final FirestoreController firestoreController;
 
-  late List<Player> players;
+  late List<Player> players = [];
   late int maxPlayers;
   late RuleSet ruleSet;
-  late Deck deck;
+  late Deck deck = Deck();
   final List<List<CardEntity>> table = [];
   final List<CardEntity> discardPile = [];
 
-  late int currentPlayerIndex;
-  late int roundNumber;
+  late int currentPlayerIndex = 0;
+  late int roundNumber = 1;
   late List<List<CardEntity>> currentMoves = [];
   late bool paused = false;
+  late bool hasDrawnCard = false;
 
   GameLogic({
     required this.gameId,
     required this.firestoreController,
-    this.currentPlayerIndex = 0,
-    this.roundNumber = 1,
   });
 
-  // Starte das Spiel und synchronisiere mit Firestore
-  Future<void> startGame() async {
-    // Hole die Spieler und Regelwerk aus Firestore
-    final gameSnapshot = await firestoreController.getGame(gameId);
-    final gameData = gameSnapshot.data()!;
-    final playersData = await firestoreController.getPlayers(gameId);
-    players = playersData.map((playerData) => Player.fromMap(playerData)).toList();
-    ruleSet = RuleSet.fromName(gameData['rules']);
-    maxPlayers = gameData['max_players'] as int;
+  // Synchronisiere den Spielstatus mit Firestore
+  Future<void> syncWithFirestore() async {
+    try {
+      final gameSnapshot = await firestoreController.getGame(gameId);
+      if (!gameSnapshot.exists) {
+        print('Game document does not exist.');
+        return;
+      }
+      final gameData = gameSnapshot.data()!;
 
-    deck = Deck();
-    players.shuffle();
-    deck.shuffle();
+      final playersData = await firestoreController.getPlayers(gameId);
+      print(playersData);
 
-    int cardsToDeal = players.length * 11 + 1;
-    dealCards(cardsToDeal);
+      players = playersData.map((playerData) {
+        final player = Player.fromMap(playerData);
+        return player;
+      }).toList();
 
-    for (var player in players) {
-      sortPlayersHand(player);
-    }
+      // Load the deck
+      final deckData = await firestoreController.getDeck(gameId);
 
-    final tableMap = {
-      for (int i = 0; i < table.length; i++) i.toString(): table[i].map((card) => card.toMap()).toList(),
-    };
-    await firestoreController.updateGameState(gameId, {
-      'currentPlayer': players[currentPlayerIndex].id,
-      'table': tableMap,
-      'discardPile': discardPile.map((card) => card.toMap()).toList(),
-      'isGameStarted': true,
-    });
-  }
+      if (deckData.isEmpty) {
+        print('Deck data is empty.');
+        return;
+      }
 
-  // Karten austeilen und synchronisieren
-  void dealCards(int cardsToDeal) {
-    int playerIndex = 0;
-    for (int i = 0; i < cardsToDeal; i++) {
-      Player currentPlayer = players[playerIndex];
-      CardEntity card = deck.dealOne();
-      currentPlayer.addCardToHand(card);
-      playerIndex = (playerIndex + 1) % players.length;
-    }
+      try {
+        deck.cards.clear();
+        deck.cards.addAll(deckData.map((card) => CardEntity.fromMap(card)));
+        print('Deck loaded with ${deck.cards.length} cards.');
+      } catch (e) {
+        print('Error processing deck data: $e');
+      }
 
-    // Synchronisiere die Hände der Spieler mit Firestore
-    for (var player in players) {
-      firestoreController.updateGameState(gameId, {
-        'players.${player.id}.hand': player.hand.map((card) => card.toMap()).toList(),
-      });
+      // Load the table
+      table.clear();
+      final tableData = gameData['table'] as List<dynamic>? ?? [];
+      try {
+        table.addAll(tableData.map((group) {
+          if (group is List<dynamic>) {
+            return group.map((card) => CardEntity.fromMap(card)).toList();
+          } else {
+            throw Exception('Invalid table group format');
+          }
+        }));
+      } catch (e) {
+        print('Error processing table data: $e');
+      }
+
+      // Load the discard pile
+      discardPile.clear();
+      final discardPileData = gameData['discardPile'] as List<dynamic>? ?? [];
+      try {
+        discardPile.addAll(discardPileData.map((card) => CardEntity.fromMap(card)));
+      } catch (e) {
+        print('Error processing discard pile data: $e');
+      }
+
+      // Set the current player
+      currentPlayerIndex = players.indexWhere((player) => player.id == gameData['currentPlayer']);
+      print('Current player index: $currentPlayerIndex');
+    } catch (e) {
+      print('Error syncing with Firestore: $e');
     }
   }
 
   int getDeckLength() {
     return deck.getLength();
   }
-  
-  void sortPlayersHand(Player player) {
-    const List<String> rankOrder = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
-    const List<String> suitOrder = ['Joker', 'C', 'D', 'H', 'S'];
-
-    player.hand.sort((a, b) {
-      final int rankCompare = rankOrder.indexOf(a.rank).compareTo(rankOrder.indexOf(b.rank));
-      if (rankCompare != 0) return rankCompare;
-      return suitOrder.indexOf(b.suit).compareTo(suitOrder.indexOf(a.suit));
-    });
-  }
 
   // Nächster Spieler und Synchronisation
   Future<void> nextTurn() async {
     currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+    hasDrawnCard = false;
 
     await firestoreController.updateGameState(gameId, {
       'currentPlayer': players[currentPlayerIndex].id,
       'discardPile': discardPile.map((card) => card.toMap()).toList(),
     });
+  }
+
+  // Karte ziehen
+  void drawCard(String source) {
+    if (hasDrawnCard) {
+      print("You have already drawn a card this turn.");
+      return;
+    }
+
+    CardEntity drawnCard;
+    if (source == 'deck') {
+      drawnCard = deck.dealOne();
+    } else if (source == 'discardPile' && discardPile.isNotEmpty) {
+      drawnCard = discardPile.removeLast();
+    } else {
+      print("Invalid source or discard pile is empty.");
+      return;
+    }
+
+    players[currentPlayerIndex].addCardToHand(drawnCard);
+    hasDrawnCard = true;
+
+    firestoreController.updateGameState(gameId, {
+      'players.${players[currentPlayerIndex].id}.hand': players[currentPlayerIndex].hand.map((card) => card.toMap()).toList(),
+      'discardPile': discardPile.map((card) => card.toMap()).toList(),
+    });
+
+    print("Player ${players[currentPlayerIndex].name} drew a card from $source.");
   }
 
   void nextRound(){
@@ -125,11 +152,6 @@ class GameLogic {
     currentPlayerIndex = 0;
     deck.reset();
     deck.shuffle();
-    
-    dealCards(players.length * 11 + 1);
-    for (var player in players) {
-      sortPlayersHand(player);
-    }
   }
 
   bool isPaused(){
@@ -140,23 +162,26 @@ class GameLogic {
     return players[currentPlayerIndex].id == playerID;
   }
 
+  // Validierung von Zügen
   bool validateMove(List<CardEntity> cards) {
-    if(ruleSet.validateMove(cards)){
+    if (!hasDrawnCard) return false;
+
+    if (ruleSet.validateMove(cards)) {
       currentMoves.add(cards);
-      print("Valider move: $cards");
+      print("Valid move: $cards");
       return true;
-    }else{
+    } else {
       print("Invalid move: $cards");
       return false;
     }
   }
 
-  //wenn eine oder mehrere Karten mit bereits gelegten Karten kollidieren, sollen diese zu den Karten auf dem Tisch hinzugefügt werden, sobald die Regeln dies zulassen
- // bool validateAdditionalCard()
-
+  // Validierung von Ablagen
   bool validateDiscard(CardEntity card) {
-    if(currentMoves.isEmpty){
-      if(ruleSet.validateDiscard(card)){
+    if (!hasDrawnCard) return false;
+
+    if (currentMoves.isEmpty) {
+      if (ruleSet.validateDiscard(card)) {
         discardPile.add(card);
         players[currentPlayerIndex].removeCardFromHand(card);
 
@@ -168,8 +193,8 @@ class GameLogic {
         nextTurn();
         return true;
       }
-    }else{
-      if(players[currentPlayerIndex].isOut || ruleSet.validateRoundCondition(currentMoves, roundNumber)){
+    } else {
+      if (players[currentPlayerIndex].isOut || ruleSet.validateRoundCondition(currentMoves, roundNumber)) {
         discardPile.add(card);
         players[currentPlayerIndex].removeCardFromHand(card);
         addCurrentMovesToTable();
@@ -183,7 +208,7 @@ class GameLogic {
         checkForWin();
         nextTurn();
         return true;
-      }else{
+      } else {
         print("Player is not out yet or the round condition is not met.");
         return false;
       }
@@ -203,9 +228,10 @@ class GameLogic {
     });
   }
 
+  // Überprüfe, ob ein Spieler gewonnen hat
   bool checkForWin() {
     if (players[currentPlayerIndex].hand.isEmpty) {
-      print("Player ${players[currentPlayerIndex].name} has won the game!");
+      print("Player ${players[currentPlayerIndex].name} has won the round!");
       paused = true;
       calculatePoints();
       Player winningPlayer = getWinnigPlayer();
@@ -218,23 +244,23 @@ class GameLogic {
     return false;
   }
 
-  void calculatePoints(){
+  // Punkte berechnen
+  void calculatePoints() {
     for (var player in players) {
       int points = 0;
       for (var card in player.hand) {
-        if(card.rank == '2'){
+        if (card.rank == '2') {
           points += 20;
-        }else if(card.rank == 'A'){
+        } else if (card.rank == 'A') {
           points += 15;
-        }else if(card.suit == 'Joker'){
+        } else if (card.suit == 'Joker') {
           points += 50;
-        }else if(card.rank == '3' || card.rank == '4' || card.rank == '5' || card.rank == '6' || card.rank == '7'){
+        } else if (['3', '4', '5', '6', '7'].contains(card.rank)) {
           points += 5;
-        }else{
+        } else {
           points += 10;
         }
       }
-      print("Player ${player.name} has $points points.");
       player.points = points;
     }
   }
@@ -263,10 +289,15 @@ class GameLogic {
         final data = snapshot.data()!;
 
         currentPlayerIndex = players.indexWhere((p) => p.id == data['currentPlayer']);
+        final tableData = data['table'] as List<dynamic>? ?? [];
         table.clear();
-        final tableMap = data['table'] as Map<String, dynamic>;
-        table.addAll(tableMap.values.map((group) =>
-            (group as List).map((card) => CardEntity.fromMap(card)).toList()));
+        table.addAll(tableData.map((group) {
+          if (group is List<dynamic>) {
+            return group.map((card) => CardEntity.fromMap(card)).toList();
+          } else {
+            throw Exception('Invalid table group format');
+          }
+        }));
 
         discardPile.clear();
         discardPile.addAll((data['discardPile'] as List).map((card) => CardEntity.fromMap(card)));
@@ -278,6 +309,7 @@ class GameLogic {
 
 
   ///ToDo:
+  /// !Wichtig! Gerade wird immer ein neues Kartendeck in der gamelogic erstellt. Und die Spieler werden Immer neu gemischt obwohl die Reihenfolge nur ein Mal festgelegt werden soll.. 
   /// - Update die Spielerhände von den anderen
   /// - Gerade ist es Random ob die Reiehnfolge der Spieler richtig angezeigt wird.
   /// - Wenn man mehrere Karten hochzieht und ablegen möchte sind sie manchmal noch weit auseinander. Bspw 2, 9, 9. Sie sollen beim "verschieben" nebeneinander angezeigt werden

@@ -1,6 +1,4 @@
 import 'rule_set.dart';
-import '../entities/deck.dart';
-import '../entities/player.dart';
 import '../entities/card_entity.dart';
 
 class StandardRuleSet extends RuleSet {
@@ -34,7 +32,6 @@ class StandardRuleSet extends RuleSet {
   @override
   bool validateDiscard(CardEntity card) {
     if(card.suit == 'Joker' || card.rank == '2' ) {
-      print("Joker or 2 are not allowed to be discarded");
       return false;
     }else{
       return true;
