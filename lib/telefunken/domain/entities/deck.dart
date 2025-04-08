@@ -14,12 +14,12 @@ class Deck {
     List<CardEntity> singleSet = [];
     for (var suit in suits) {
       for (var rank in ranks) {
-        singleSet.add(CardEntity(suit: suit, rank: rank, isUp: false));
+        singleSet.add(CardEntity(suit: suit, rank: rank));
       }
     }
     // Zwei Joker hinzufügen
-    singleSet.add(CardEntity(suit: "Joker", rank: "", isUp: false));
-    singleSet.add(CardEntity(suit: "Joker", rank: "2", isUp: false));
+    singleSet.add(CardEntity(suit: "Joker", rank: ""));
+    singleSet.add(CardEntity(suit: "Joker", rank: "2"));
 
     // Zwei Sets ergeben insgesamt 108 Karten
     cards.addAll(singleSet);
