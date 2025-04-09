@@ -4,6 +4,7 @@ import 'package:flame/events.dart';
 import 'package:flame/game.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
+import 'package:telefunken/telefunken/domain/entities/card_entity.dart';
 import 'package:telefunken/telefunken/presentation/game/card_component.dart';
 import 'package:telefunken/telefunken/service/firestore_controller.dart';
 import '../../domain/entities/player.dart';
@@ -39,7 +40,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
   @override
   Future<void> onLoad() async {
     await _loadUIComponents();
-    _observeGameState();
+    listenToGameState();
   }
 
   Future<void> _loadUIComponents() async {
@@ -77,7 +78,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
     add(waitingForPlayersText);
   }
 
-  void _observeGameState() {
+  void listenToGameState() {
     firestoreController.listenToGameState(gameId).listen((snapshot) {
       final data = snapshot.data();
       if (data == null) return;
@@ -91,8 +92,32 @@ class TelefunkenGame extends FlameGame with TapDetector {
         _isGameLogicInitialized = true; // Prevent reinitialization
         _initializeGameLogic();
       } else {
-        _updateWaitingText(currentPlayers);
+        //check if the waiting text is still there
+        if (waitingForPlayersText.parent != null) {
+          _updateWaitingText(currentPlayers);
+        }
       }
+
+      // Update the table and discard pile in the UI
+      gameLogic!.table.clear();
+      if (data['table'] != null) {
+        final tableData = data['table'] as Map<String, dynamic>;
+        tableData.forEach((_, group) {
+          gameLogic!.table.add((group as List<dynamic>)
+              .map((card) => CardEntity.fromMap(card))
+              .toList());
+        });
+      }
+
+      gameLogic!.discardPile.clear();
+      if (data['discardPile'] != null) {
+        final discardPileData = data['discardPile'] as List<dynamic>;
+        gameLogic!.discardPile.addAll(
+            discardPileData.map((card) => CardEntity.fromMap(card)));
+      }
+
+      // Update the UI
+      updateUI();
     });
   }
 
@@ -125,8 +150,11 @@ class TelefunkenGame extends FlameGame with TapDetector {
           : pi / 3;
       final playerPos = deckPosition - Vector2(radius * cos(angle), radius * sin(angle));
       playerPositions[players[i].name] = playerPos;
+      var text = players[i].name == playerName
+          ? 'You'
+          : players[i].name;
       add(TextComponent(
-        text: players[i].name,
+        text: text,
         textRenderer: TextPaint(style: const TextStyle(fontSize: 18, color: Colors.white)),
         position: playerPos,
         anchor: Anchor.center,
@@ -196,6 +224,9 @@ class TelefunkenGame extends FlameGame with TapDetector {
   }
 
   void displayOpponentsHand() async {
+    //remove old visuals
+    children.whereType<CardComponent>().forEach(remove);
+    
     final cardWidth = 30.0;
     final spacing = 10.0;
 

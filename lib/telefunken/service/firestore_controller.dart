@@ -46,7 +46,7 @@ class FirestoreController {
     List<Map<String, dynamic>> playersData = [];
     while (playersData.length < maxPlayers) {
       playersData = await getPlayers(gameId);
-      await Future.delayed(const Duration(milliseconds: 500)); // Small delay to avoid excessive polling
+      await Future.delayed(const Duration(milliseconds: 500));
     }
 
     final players = playersData.map((data) => Player.fromMap(data)).toList();
@@ -86,6 +86,7 @@ class FirestoreController {
       'discardPile': [],
       'currentPlayer': players[0].id,
       'isGameStarted': true,
+      'roundNumber': 1,
     });
   }
 

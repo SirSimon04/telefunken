@@ -17,7 +17,7 @@ class GameLogic {
   final List<CardEntity> discardPile = [];
 
   late int currentPlayerIndex = 0;
-  late int roundNumber = 1;
+  late int roundNumber;
   late List<List<CardEntity>> currentMoves = [];
   late bool paused = false;
   late bool hasDrawnCard = false;
@@ -37,10 +37,17 @@ class GameLogic {
       }
       final gameData = gameSnapshot.data()!;
 
+      ruleSet = RuleSet.fromName(gameData['rules']);
+
+      maxPlayers = gameData['max_players'] ?? 0;
+      currentPlayerIndex = players.indexWhere((p) => p.id == gameData['currentPlayer']);
+      roundNumber = gameData['roundNumber'] ?? 1;
+
       final playersData = await firestoreController.getPlayers(gameId);
 
       players = playersData.map((playerData) {
         final player = Player.fromMap(playerData);
+        print('Player: ${player.name}, ID: ${player.id}');
         return player;
       }).toList();
 
@@ -55,7 +62,6 @@ class GameLogic {
       try {
         deck.cards.clear();
         deck.cards.addAll(deckData.map((card) => CardEntity.fromMap(card)));
-        print('Deck loaded with ${deck.cards.length} cards.');
       } catch (e) {
         print('Error processing deck data: $e');
       }
@@ -95,7 +101,7 @@ class GameLogic {
   // Nächster Spieler und Synchronisation
   Future<void> nextTurn() async {
     currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
-    
+
     hasDrawnCard = false;
 
     await firestoreController.updateGameState(gameId, {
@@ -154,6 +160,13 @@ class GameLogic {
     currentPlayerIndex = 0;
     deck.reset();
     deck.shuffle();
+
+    firestoreController.updateGameState(gameId, {
+      'roundNumber': roundNumber,
+      'deck': deck.cards.map((card) => card.toMap()).toList(),
+      'discardPile': [],
+      'table': [],
+    });
   }
 
   bool isPaused(){
@@ -225,6 +238,7 @@ class GameLogic {
     final tableMap = {
       for (int i = 0; i < table.length; i++) i.toString(): table[i].map((card) => card.toMap()).toList(),
     };
+    
     firestoreController.updateGameState(gameId, {
       'table': tableMap,
     });
@@ -291,19 +305,38 @@ class GameLogic {
         final data = snapshot.data()!;
 
         currentPlayerIndex = players.indexWhere((p) => p.id == data['currentPlayer']);
-        final tableData = data['table'] as List<dynamic>? ?? [];
+
+        final tableData = data['table'];
         table.clear();
-        table.addAll(tableData.map((group) {
-          if (group is List<dynamic>) {
-            return group.map((card) => CardEntity.fromMap(card)).toList();
-          } else {
-            throw Exception('Invalid table group format');
-          }
-        }));
+        if (tableData is Map<String, dynamic>) {
+          // Wenn tableData eine Map ist, die Gruppen als Werte enthält
+          table.addAll(tableData.values.map((group) {
+            if (group is List<dynamic>) {
+              return group.map((card) => CardEntity.fromMap(card)).toList();
+            } else {
+              throw Exception('Invalid table group format in Map');
+            }
+          }));
+        } else if (tableData is List<dynamic>) {
+          // Wenn tableData direkt eine Liste ist
+          table.addAll(tableData.map((group) {
+            if (group is List<dynamic>) {
+              return group.map((card) => CardEntity.fromMap(card)).toList();
+            } else {
+              throw Exception('Invalid table group format in List');
+            }
+          }));
+        } else {
+          throw Exception('Invalid table data format');
+        }
 
         discardPile.clear();
-        discardPile.addAll((data['discardPile'] as List).map((card) => CardEntity.fromMap(card)));
-
+        final discardPileData = data['discardPile'];
+        if (discardPileData is List<dynamic>) {
+          discardPile.addAll(discardPileData.map((card) => CardEntity.fromMap(card)));
+        } else {
+          throw Exception('Invalid discard pile data format');
+        }
         paused = data['isGamePaused'] ?? false;
       }
     });
@@ -312,6 +345,9 @@ class GameLogic {
 
   ///ToDo:
   /// !Wichtig! Gerade wird immer ein neues Kartendeck in der gamelogic erstellt. Und die Spieler werden Immer neu gemischt obwohl die Reihenfolge nur ein Mal festgelegt werden soll.. 
+  /// 
+  /// Wenn eine Karte auf den tisch gelegt wurde und die Gruppe oder eine einzelne Karte wieder bewegt wird, soll sie aus currentMoves gelöscht werden und alle Karten gehen zurück in den Ursprung
+  /// 
   /// - Update die Spielerhände von den anderen
   /// - Gerade ist es Random ob die Reiehnfolge der Spieler richtig angezeigt wird.
   /// - Wenn man mehrere Karten hochzieht und ablegen möchte sind sie manchmal noch weit auseinander. Bspw 2, 9, 9. Sie sollen beim "verschieben" nebeneinander angezeigt werden
