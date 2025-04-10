@@ -50,4 +50,8 @@ class Deck {
   int getLength() {
     return cards.length;
   }
+  
+  bool isEmpty() {
+    return cards.isEmpty;
+  }
 }

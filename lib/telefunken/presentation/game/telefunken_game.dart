@@ -6,6 +6,7 @@ import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import 'package:telefunken/telefunken/domain/entities/card_entity.dart';
 import 'package:telefunken/telefunken/presentation/game/card_component.dart';
+import 'package:telefunken/telefunken/presentation/game/labeled_sprite_component.dart';
 import 'package:telefunken/telefunken/service/firestore_controller.dart';
 import '../../domain/entities/player.dart';
 import '../../domain/logic/game_logic.dart';
@@ -98,24 +99,6 @@ class TelefunkenGame extends FlameGame with TapDetector {
         }
       }
 
-      // Update the table and discard pile in the UI
-      gameLogic!.table.clear();
-      if (data['table'] != null) {
-        final tableData = data['table'] as Map<String, dynamic>;
-        tableData.forEach((_, group) {
-          gameLogic!.table.add((group as List<dynamic>)
-              .map((card) => CardEntity.fromMap(card))
-              .toList());
-        });
-      }
-
-      gameLogic!.discardPile.clear();
-      if (data['discardPile'] != null) {
-        final discardPileData = data['discardPile'] as List<dynamic>;
-        gameLogic!.discardPile.addAll(
-            discardPileData.map((card) => CardEntity.fromMap(card)));
-      }
-
       // Update the UI
       updateUI();
     });
@@ -136,6 +119,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
 
     await gameLogic!.syncWithFirestore();
     gameLogic!.listenToGameState();
+    gameLogic!.listenToPlayerUpdates();
 
     _displayPlayers(gameLogic!.players);
     playerIndex = gameLogic!.players.indexWhere((player) => player.id == playerId);
@@ -224,11 +208,10 @@ class TelefunkenGame extends FlameGame with TapDetector {
   }
 
   void displayOpponentsHand() async {
-    //remove old visuals
-    children.whereType<CardComponent>().forEach(remove);
-    
     final cardWidth = 30.0;
     final spacing = 10.0;
+
+    final backSprite = Sprite(await images.load('cards/Back_Red.png'));
 
     for (var player in gameLogic!.players) {
       if (player.id == gameLogic!.players[playerIndex].id) continue;
@@ -239,12 +222,14 @@ class TelefunkenGame extends FlameGame with TapDetector {
 
       for (int i = 0; i < cardCount; i++) {
         final pos = startPos + Vector2(i * spacing, 0);
-        add(SpriteComponent()
-          ..sprite = await loadSprite('cards/Back_Red.png')
-          ..position = pos
-          ..anchor = Anchor.topLeft
-          ..size = Vector2(cardWidth, 42)
-          ..priority = 1);
+        add(LabeledSpriteComponent(
+          label: 'backCard',
+          sprite: backSprite,
+          position: pos,
+          anchor: Anchor.topLeft,
+          size: Vector2(cardWidth, 42),
+          priority: 1
+        ));
       }
     }
   }
@@ -285,6 +270,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
     const cardWidth = 50.0;
     const cardHeight = 70.0;
     final card = gameLogic!.discardPile.last;
+    print(card.toString());
 
     add(SpriteComponent()
       ..sprite = Sprite(await images.load('cards/${card.suit}${card.rank}.png'))
@@ -294,11 +280,41 @@ class TelefunkenGame extends FlameGame with TapDetector {
   }
 
   void updateUI() {
+    if (gameLogic!.isGameOver()) {
+      showWinningScreen();
+      return;
+    }
+
+    removeBackedCards();
+    _updateCardsLeftText();
     displayCurrentPlayerHand();
     displayOpponentsHand();
     showTable();
     showDiscardPile();
+    //showDrawPile();
   }
+
+  void showDrawPile() async {
+    if (gameLogic!.deck.isEmpty()) return;
+
+    const cardWidth = 50.0;
+    const cardHeight = 70.0;
+
+    add(SpriteComponent()
+      ..sprite = Sprite(await images.load('cards/Back_Red.png'))
+      ..position = Vector2(deckPosition.x, deckPosition.y)
+      ..size = Vector2(cardWidth, cardHeight)
+      ..anchor = Anchor.center);
+  }
+
+  void removeBackedCards() {
+  // Alle LabeledSpriteComponents mit Label 'backCard' entfernen
+  final toRemove = children.where((c) =>
+      c is LabeledSpriteComponent && (c).label == 'backCard').toList();
+  for (var comp in toRemove) {
+    comp.removeFromParent();
+  }
+}
 
   void handleCardsDrop(List<CardComponent> group) {
     if (!gameLogic!.isPlayersTurn(gameLogic!.players[playerIndex].id) || gameLogic!.isPaused()) {
@@ -329,6 +345,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
 
   void resetGroupToOriginalPosition(List<CardComponent> group) {
     for (var cardComponent in group) {
+      cardComponent.setHighlighted(false);
       cardComponent.add(MoveEffect.to(
         cardComponent.originalPosition!,
         EffectController(duration: 0.5, curve: Curves.easeOut),
@@ -349,23 +366,55 @@ class TelefunkenGame extends FlameGame with TapDetector {
   }
 
   @override
-  void onTapDown(TapDownInfo info) {
+  void onTapDown(TapDownInfo info) async {
     final tapPosition = info.eventPosition.global;
 
-    if(!gameLogic!.isPlayersTurn(playerId)) return;
-    //später den buy button available lassen
+    if (!gameLogic!.isPlayersTurn(playerId)) return;
 
-    // Prüfen, ob auf das Deck geklickt wurde
     if (deckUI.toRect().contains(tapPosition.toOffset())) {
-      if (gameLogic != null && !gameLogic!.hasDrawnCard) {
-        gameLogic!.drawCard('deck');
-        updateUI();
+      if (!gameLogic!.hasDrawnCard) {
+        final card = await gameLogic!.drawCard('deck');
+        if (card != null) {
+          animateDrawnCard(card, from: deckUI.toRect().center);
+        }
       }
-    }else if (discardZone.contains(tapPosition.toOffset())) {
-      if (gameLogic != null && !gameLogic!.hasDrawnCard) {
-        gameLogic!.drawCard('discardPile');
-        updateUI();
+    } else if (discardZone.contains(tapPosition.toOffset())) {
+      if (!gameLogic!.hasDrawnCard) {
+        final card = await gameLogic!.drawCard('discardPile');
+        if (card != null) {
+          animateDrawnCard(card, from: discardZone.center);
+        }
       }
     }
   }
+
+  void animateDrawnCard(CardEntity card, {required Offset from}) {
+    final animatedCard = CardComponent(
+      card:card,
+      ownerId: gameLogic!.players[playerIndex].id,
+      gameLogic: gameLogic!,
+      onCardsDropped: handleCardsDrop,
+    )
+      ..position = Vector2(from.dx, from.dy)
+      ..priority = 100;
+
+    add(animatedCard);
+
+    // Dynamisches Ziel: z. B. Kartenhand unten rechts positionieren (darfst anpassen!)
+    final handCardCount = children.whereType<CardComponent>().length;
+    final xOffset = 100.0 + (handCardCount * 40);
+    final targetPosition = Vector2(xOffset, size.y - 180);
+
+    animatedCard.add(
+      MoveEffect.to(
+        targetPosition,
+        EffectController(duration: 0.5, curve: Curves.easeInOut),
+        onComplete: () {
+          animatedCard.removeFromParent();
+          updateUI(); // Zeige echte Karte in der Hand
+        },
+      ),
+    );
+  }
+
 }

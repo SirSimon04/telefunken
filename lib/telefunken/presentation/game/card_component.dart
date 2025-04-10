@@ -72,7 +72,7 @@ class CardComponent extends SpriteComponent with TapCallbacks, DragCallbacks, Co
     }
 
     if (selectedCards.isEmpty || !selectedCards.contains(this)) {
-            return;
+      return;
     }
 
     super.onDragStart(event);
@@ -91,6 +91,8 @@ class CardComponent extends SpriteComponent with TapCallbacks, DragCallbacks, Co
       card.position.add(event.localDelta);
     }
     lastPointerPosition = event.localPosition;
+
+     arrangeSelectedCardsAroundDraggedCard(this);
   }
 
   @override
@@ -109,5 +111,30 @@ class CardComponent extends SpriteComponent with TapCallbacks, DragCallbacks, Co
       priority = 0;
     }
     super.onDragEnd(event);
+  }
+
+  void arrangeSelectedCardsAroundDraggedCard(CardComponent draggedCard) {
+    final spacing = draggedCard.size.x * 0.1;
+    final selected = List<CardComponent>.from(selectedCards);
+    
+    selected.sort((a, b) => a.position.x.compareTo(b.position.x));
+
+    final indexOfDragged = selected.indexOf(draggedCard);
+    final basePosition = draggedCard.position;
+
+    for (int i = 0; i < selected.length; i++) {
+      final card = selected[i];
+      final dx = (i - indexOfDragged) * (card.size.x + spacing);
+      card.position = basePosition + Vector2(dx, 0);
+    }
+  }
+
+  void setHighlighted(bool bool) {
+    isHighlighted = bool;
+    if (isHighlighted) {
+      position.add(Vector2(0, -10));
+    } else {
+      position.add(Vector2(0, 10));
+    }
   }
 }

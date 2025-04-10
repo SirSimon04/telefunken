@@ -20,6 +20,7 @@ class GameLogic {
   late int roundNumber;
   late List<List<CardEntity>> currentMoves = [];
   late bool paused = false;
+  late bool gameOver = false;
   late bool hasDrawnCard = false;
 
   GameLogic({
@@ -111,11 +112,8 @@ class GameLogic {
   }
 
   // Karte ziehen
-  void drawCard(String source) async {
-    if (hasDrawnCard) {
-      print("You have already drawn a card this turn.");
-      return;
-    }
+  Future<CardEntity?> drawCard(String source) async {
+    if (hasDrawnCard) return null;
 
     CardEntity drawnCard;
     if (source == 'deck') {
@@ -124,24 +122,30 @@ class GameLogic {
       drawnCard = discardPile.removeLast();
     } else {
       print("Invalid source or discard pile is empty.");
-      return;
+      return null;
     }
 
     players[currentPlayerIndex].addCardToHand(drawnCard);
     hasDrawnCard = true;
 
+    // Update the player's hand in Firestore
+    firestoreController.updatePlayerHand(
+      gameId,
+      players[currentPlayerIndex].id,
+      players[currentPlayerIndex].hand.map((card) => card.toMap()).toList(),
+    );
 
     try {
-      final playerId = players[currentPlayerIndex].id;
       await firestoreController.updateGameState(gameId, {
-        'players.$playerId.hand': players[currentPlayerIndex].hand.map((card) => card.toMap()).toList(),
         'discardPile': discardPile.map((card) => card.toMap()).toList(),
+        'deck': deck.cards.map((card) => card.toMap()).toList(),
       });
     } catch (e) {
       print('Error updating game state: $e');
     }
 
     print("Player ${players[currentPlayerIndex].name} drew a card from $source.");
+    return drawnCard;
   }
 
   void nextRound(){
@@ -284,6 +288,7 @@ class GameLogic {
   Player getWinnigPlayer(){
     Player winningPlayer = players[0];
     for (var player in players) {
+      print("Player ${player.name} has ${player.points} points.");
       if(player.points < winningPlayer.points){
         winningPlayer = player;
       }
@@ -297,10 +302,16 @@ class GameLogic {
       players[currentPlayerIndex].removeCardsFromHand(move);
     }
     currentMoves.clear();
+
+    firestoreController.updatePlayerHand(
+      gameId,
+      players[currentPlayerIndex].id,
+      players[currentPlayerIndex].hand.map((card) => card.toMap()).toList(),
+    );
   }
 
   void listenToGameState() {
-    firestoreController.listenToGameState(gameId).listen((snapshot) {
+    firestoreController.listenToGameState(gameId).listen((snapshot) async {
       if (snapshot.exists) {
         final data = snapshot.data()!;
 
@@ -337,18 +348,28 @@ class GameLogic {
         } else {
           throw Exception('Invalid discard pile data format');
         }
+
+        //gamestate flags
         paused = data['isGamePaused'] ?? false;
+        gameOver = data['isGameOver'] ?? false;
       }
     });
   }
 
+  void listenToPlayerUpdates() {
+    firestoreController.listenToPlayersUpdate(gameId).listen((playersData) {
+      players = playersData.map((playerData) => Player.fromMap(playerData)).toList();
+    });
+  }
+
+  bool isGameOver() {
+    return gameOver;
+  }
+
 
   ///ToDo:
-  /// !Wichtig! Gerade wird immer ein neues Kartendeck in der gamelogic erstellt. Und die Spieler werden Immer neu gemischt obwohl die Reihenfolge nur ein Mal festgelegt werden soll.. 
-  /// 
-  /// Wenn eine Karte auf den tisch gelegt wurde und die Gruppe oder eine einzelne Karte wieder bewegt wird, soll sie aus currentMoves gelöscht werden und alle Karten gehen zurück in den Ursprung
-  /// 
   /// - Update die Spielerhände von den anderen
+  /// 
   /// - Gerade ist es Random ob die Reiehnfolge der Spieler richtig angezeigt wird.
   /// - Wenn man mehrere Karten hochzieht und ablegen möchte sind sie manchmal noch weit auseinander. Bspw 2, 9, 9. Sie sollen beim "verschieben" nebeneinander angezeigt werden
   /// - Gerade ist der Fehler, wenn die Karten zum Ursprung zurück "fliegen", dann sind sie doppelt da..
