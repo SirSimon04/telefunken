@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:telefunken/telefunken/domain/entities/card_entity.dart';
 import 'package:telefunken/telefunken/service/firestore_controller.dart';
 
@@ -32,10 +33,7 @@ class GameLogic {
   Future<void> syncWithFirestore() async {
     try {
       final gameSnapshot = await firestoreController.getGame(gameId);
-      if (!gameSnapshot.exists) {
-        print('Game document does not exist.');
-        return;
-      }
+      if (!gameSnapshot.exists) return;
       final gameData = gameSnapshot.data()!;
 
       ruleSet = RuleSet.fromName(gameData['rules']);
@@ -100,7 +98,7 @@ class GameLogic {
   }
 
   // Nächster Spieler und Synchronisation
-  Future<void> nextTurn() async {
+  void nextTurn() async {
     currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
 
     hasDrawnCard = false;
@@ -119,7 +117,13 @@ class GameLogic {
     if (source == 'deck') {
       drawnCard = deck.dealOne();
     } else if (source == 'discardPile' && discardPile.isNotEmpty) {
+      if(players[currentPlayerIndex].getCoins() < 1) {
+        //show in breadcrumb that no coins are available
+        print("Player ${players[currentPlayerIndex].name} has no coins to draw from discard pile.");
+        return null;
+      }
       drawnCard = discardPile.removeLast();
+      players[currentPlayerIndex].removeCoin();
     } else {
       print("Invalid source or discard pile is empty.");
       return null;
@@ -128,17 +132,30 @@ class GameLogic {
     players[currentPlayerIndex].addCardToHand(drawnCard);
     hasDrawnCard = true;
 
-    // Update the player's hand in Firestore
-    firestoreController.updatePlayerHand(
+    await firestoreController.updatePlayer(
       gameId,
       players[currentPlayerIndex].id,
-      players[currentPlayerIndex].hand.map((card) => card.toMap()).toList(),
+      {
+        'hand': players[currentPlayerIndex].hand.map((card) => card.toMap()).toList(),
+        'coins': players[currentPlayerIndex].getCoins(),
+      },
     );
 
     try {
       await firestoreController.updateGameState(gameId, {
         'discardPile': discardPile.map((card) => card.toMap()).toList(),
         'deck': deck.cards.map((card) => card.toMap()).toList(),
+      });
+      await FirebaseFirestore.instance
+        .collection('games')
+        .doc(gameId)
+        .update({
+          'lastDraw': {
+            'playerId': players[currentPlayerIndex].id,
+            'card': drawnCard.toMap(),
+            'source': source,
+            'timestamp': FieldValue.serverTimestamp(),
+        }
       });
     } catch (e) {
       print('Error updating game state: $e');
@@ -148,7 +165,7 @@ class GameLogic {
     return drawnCard;
   }
 
-  void nextRound(){
+  void nextRound() async {
     Player temp = players[0];
     players.removeAt(0);
     players.add(temp);
@@ -165,7 +182,7 @@ class GameLogic {
     deck.reset();
     deck.shuffle();
 
-    firestoreController.updateGameState(gameId, {
+    await firestoreController.updateGameState(gameId, {
       'roundNumber': roundNumber,
       'deck': deck.cards.map((card) => card.toMap()).toList(),
       'discardPile': [],
@@ -196,7 +213,7 @@ class GameLogic {
   }
 
   // Validierung von Ablagen
-  bool validateDiscard(CardEntity card) {
+  Future<bool> validateDiscard(CardEntity card) async {
     if (!hasDrawnCard) return false;
 
     if (currentMoves.isEmpty) {
@@ -204,7 +221,7 @@ class GameLogic {
         discardPile.add(card);
         players[currentPlayerIndex].removeCardFromHand(card);
 
-        firestoreController.updateGameState(gameId, {
+        await firestoreController.updateGameState(gameId, {
           'discardPile': discardPile.map((card) => card.toMap()).toList(),
         });
 
@@ -220,7 +237,7 @@ class GameLogic {
         removeCurrentMovesFromPlayersHand();
         players[currentPlayerIndex].isOut = true;
 
-        firestoreController.updateGameState(gameId, {
+        await firestoreController.updateGameState(gameId, {
           'discardPile': discardPile.map((card) => card.toMap()).toList(),
         });
 
@@ -235,7 +252,7 @@ class GameLogic {
     return false;
   }
 
-  void addCurrentMovesToTable(){
+  void addCurrentMovesToTable() async {
     for (var move in currentMoves) {
       table.add(move);
     }
@@ -243,19 +260,19 @@ class GameLogic {
       for (int i = 0; i < table.length; i++) i.toString(): table[i].map((card) => card.toMap()).toList(),
     };
     
-    firestoreController.updateGameState(gameId, {
+    await firestoreController.updateGameState(gameId, {
       'table': tableMap,
     });
   }
 
   // Überprüfe, ob ein Spieler gewonnen hat
-  bool checkForWin() {
+  Future<bool> checkForWin() async {
     if (players[currentPlayerIndex].hand.isEmpty) {
       print("Player ${players[currentPlayerIndex].name} has won the round!");
       paused = true;
       calculatePoints();
       Player winningPlayer = getWinnigPlayer();
-      firestoreController.updateGameState(gameId, {
+      await firestoreController.updateGameState(gameId, {
         'winner': winningPlayer.name,
         'isGameOver': true,
       });
@@ -297,30 +314,33 @@ class GameLogic {
     return winningPlayer;
   }
 
-  removeCurrentMovesFromPlayersHand(){
+  removeCurrentMovesFromPlayersHand() async {
     for (var move in currentMoves) {
       players[currentPlayerIndex].removeCardsFromHand(move);
     }
     currentMoves.clear();
 
-    firestoreController.updatePlayerHand(
+    await firestoreController.updatePlayer(
       gameId,
       players[currentPlayerIndex].id,
-      players[currentPlayerIndex].hand.map((card) => card.toMap()).toList(),
+      {
+        'hand': players[currentPlayerIndex].hand.map((card) => card.toMap()).toList(),
+      }
     );
   }
 
   void listenToGameState() {
-    firestoreController.listenToGameState(gameId).listen((snapshot) async {
+    firestoreController.listenToGameState(gameId).listen((snapshot) {
       if (snapshot.exists) {
         final data = snapshot.data()!;
-
+        
+        // Aktualisiere den aktuellen Spieler
         currentPlayerIndex = players.indexWhere((p) => p.id == data['currentPlayer']);
 
+        // Aktualisiere das Table
         final tableData = data['table'];
         table.clear();
         if (tableData is Map<String, dynamic>) {
-          // Wenn tableData eine Map ist, die Gruppen als Werte enthält
           table.addAll(tableData.values.map((group) {
             if (group is List<dynamic>) {
               return group.map((card) => CardEntity.fromMap(card)).toList();
@@ -329,7 +349,6 @@ class GameLogic {
             }
           }));
         } else if (tableData is List<dynamic>) {
-          // Wenn tableData direkt eine Liste ist
           table.addAll(tableData.map((group) {
             if (group is List<dynamic>) {
               return group.map((card) => CardEntity.fromMap(card)).toList();
@@ -341,26 +360,41 @@ class GameLogic {
           throw Exception('Invalid table data format');
         }
 
+        // Aktualisiere die Discard Pile
         discardPile.clear();
         final discardPileData = data['discardPile'];
         if (discardPileData is List<dynamic>) {
+          print("changed discard pile");
           discardPile.addAll(discardPileData.map((card) => CardEntity.fromMap(card)));
         } else {
           throw Exception('Invalid discard pile data format');
         }
+        
+        // NEU: Aktualisiere das Deck
+        final deckData = data['deck'];
+        if (deckData is List<dynamic>) {
+          try {
+            deck.cards.clear();
+            deck.cards.addAll(deckData.map((card) => CardEntity.fromMap(card)));
+          } catch (e) {
+            print('Error processing deck data in listener: $e');
+          }
+        } else {
+          print('Deck data not in expected format.');
+        }
 
-        //gamestate flags
+        // Aktualisiere Spiel-Flags
         paused = data['isGamePaused'] ?? false;
         gameOver = data['isGameOver'] ?? false;
       }
     });
   }
 
-  void listenToPlayerUpdates() {
-    firestoreController.listenToPlayersUpdate(gameId).listen((playersData) {
-      players = playersData.map((playerData) => Player.fromMap(playerData)).toList();
-    });
-  }
+    void listenToPlayerUpdates() {
+      firestoreController.listenToPlayersUpdate(gameId).listen((playersData) {
+        players = playersData.map((playerData) => Player.fromMap(playerData)).toList();
+      });
+    }
 
   bool isGameOver() {
     return gameOver;

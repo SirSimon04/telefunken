@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flame/effects.dart';
 import 'package:flame/events.dart';
 import 'package:flame/game.dart';
@@ -42,6 +43,9 @@ class TelefunkenGame extends FlameGame with TapDetector {
   Future<void> onLoad() async {
     await _loadUIComponents();
     listenToGameState();
+    listenToPlayersUpdate();
+    listenToDrawAnimationTrigger();
+
   }
 
   Future<void> _loadUIComponents() async {
@@ -77,31 +81,6 @@ class TelefunkenGame extends FlameGame with TapDetector {
       anchor: Anchor.center,
     );
     add(waitingForPlayersText);
-  }
-
-  void listenToGameState() {
-    firestoreController.listenToGameState(gameId).listen((snapshot) {
-      final data = snapshot.data();
-      if (data == null) return;
-
-      final currentPlayers = data['current_players'] ?? 0;
-      maxPlayers = data['max_players'] ?? 0;
-
-      // Check if the game has started
-      final isGameStarted = data['isGameStarted'] ?? false;
-      if (isGameStarted && !_isGameLogicInitialized) {
-        _isGameLogicInitialized = true; // Prevent reinitialization
-        _initializeGameLogic();
-      } else {
-        //check if the waiting text is still there
-        if (waitingForPlayersText.parent != null) {
-          _updateWaitingText(currentPlayers);
-        }
-      }
-
-      // Update the UI
-      updateUI();
-    });
   }
 
   void _updateWaitingText(int currentPlayers) {
@@ -141,6 +120,14 @@ class TelefunkenGame extends FlameGame with TapDetector {
         text: text,
         textRenderer: TextPaint(style: const TextStyle(fontSize: 18, color: Colors.white)),
         position: playerPos,
+        anchor: Anchor.center,
+      ));
+
+      //add coins above
+      add(TextComponent(
+        text: players[i].coins.toString(),
+        textRenderer: TextPaint(style: const TextStyle(fontSize: 18, color: Colors.white)),
+        position: playerPos + Vector2(0, -20),
         anchor: Anchor.center,
       ));
     }
@@ -223,7 +210,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
       for (int i = 0; i < cardCount; i++) {
         final pos = startPos + Vector2(i * spacing, 0);
         add(LabeledSpriteComponent(
-          label: 'backCard',
+          label: 'opponentCards',
           sprite: backSprite,
           position: pos,
           anchor: Anchor.topLeft,
@@ -272,26 +259,33 @@ class TelefunkenGame extends FlameGame with TapDetector {
     final card = gameLogic!.discardPile.last;
     print(card.toString());
 
-    add(SpriteComponent()
-      ..sprite = Sprite(await images.load('cards/${card.suit}${card.rank}.png'))
-      ..position = Vector2(discardZone.right, discardZone.center.dy)
-      ..size = Vector2(cardWidth, cardHeight)
-      ..anchor = Anchor.topCenter);
+    add(LabeledSpriteComponent(
+      label: 'discard',
+      sprite: Sprite(await images.load('cards/${card.suit}${card.rank}.png')),
+      position: Vector2(discardZone.right, discardZone.center.dy),
+      size: Vector2(cardWidth, cardHeight),
+      anchor: Anchor.topCenter,
+    ));
   }
 
   void updateUI() {
+    if (!_isGameLogicInitialized || gameLogic == null || gameLogic!.players.isEmpty) {
+      return;
+    }
+
     if (gameLogic!.isGameOver()) {
+      print("Game Over");
       showWinningScreen();
       return;
     }
 
-    removeBackedCards();
+    removeSpriteCards('opponentCards');
+    removeSpriteCards('discard');
     _updateCardsLeftText();
     displayCurrentPlayerHand();
     displayOpponentsHand();
     showTable();
     showDiscardPile();
-    //showDrawPile();
   }
 
   void showDrawPile() async {
@@ -307,16 +301,15 @@ class TelefunkenGame extends FlameGame with TapDetector {
       ..anchor = Anchor.center);
   }
 
-  void removeBackedCards() {
-  // Alle LabeledSpriteComponents mit Label 'backCard' entfernen
-  final toRemove = children.where((c) =>
-      c is LabeledSpriteComponent && (c).label == 'backCard').toList();
-  for (var comp in toRemove) {
-    comp.removeFromParent();
+  void removeSpriteCards(String label) {
+    final toRemove = children.where((c) =>
+    c is LabeledSpriteComponent && (c).label == label).toList();
+    for (var comp in toRemove) {
+      comp.removeFromParent();
+    }
   }
-}
 
-  void handleCardsDrop(List<CardComponent> group) {
+  void handleCardsDrop(List<CardComponent> group) async {
     if (!gameLogic!.isPlayersTurn(gameLogic!.players[playerIndex].id) || gameLogic!.isPaused()) {
       resetGroupToOriginalPosition(group);
       CardComponent.selectedCards.clear();
@@ -329,7 +322,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
           card.position.x < discardZone.right &&
           card.position.y > discardZone.top &&
           card.position.y < discardZone.bottom) {
-        if (gameLogic!.validateDiscard(card.card)) {
+        if (await gameLogic!.validateDiscard(card.card)) {
           updateUI();
         } else {
           resetGroupToOriginalPosition(group);
@@ -365,6 +358,57 @@ class TelefunkenGame extends FlameGame with TapDetector {
     ));
   }
 
+  //Firestore Controller
+  void listenToGameState() {
+    firestoreController.listenToGameState(gameId).listen((snapshot) {
+      final data = snapshot.data();
+      if (data == null) return;
+
+      final currentPlayers = data['current_players'] ?? 0;
+      maxPlayers = data['max_players'] ?? 0;
+
+      // Check if the game has started
+      final isGameStarted = data['isGameStarted'] ?? false;
+      if (isGameStarted && !_isGameLogicInitialized) {
+        _isGameLogicInitialized = true;
+        print("init gamelogic");
+        _initializeGameLogic();
+      } else if (waitingForPlayersText.parent != null) {
+        print("update waiting text");
+        _updateWaitingText(currentPlayers);
+      }
+
+      if(_isGameLogicInitialized) {
+        updateUI();
+      }
+    });
+  }
+
+  void listenToPlayersUpdate() {
+    //updateUI();
+  }
+
+void listenToDrawAnimationTrigger() {
+    firestoreController.listenToCardDraw(gameId).listen((drawData) {
+      if (drawData == null) return;
+
+      final source = drawData['source'];
+      final card = source == 'deck'
+          ? CardEntity(suit: 'Back', rank: '_Red')
+          : CardEntity.fromJson(drawData['card']);
+      final playerIdOfDraw = drawData['playerId'];
+
+      // Keine doppelte Animation auslösen, wenn du selbst gezogen hast – du animierst das lokal
+      if (playerIdOfDraw == playerId) return;
+
+      final Offset from = (source == 'deck') 
+        ? deckUI.position.toOffset() 
+        : discardZone.center;
+
+      animateDrawnCard(card, from: from, playerId: playerIdOfDraw);
+    });
+  }
+
   @override
   void onTapDown(TapDownInfo info) async {
     final tapPosition = info.eventPosition.global;
@@ -375,46 +419,59 @@ class TelefunkenGame extends FlameGame with TapDetector {
       if (!gameLogic!.hasDrawnCard) {
         final card = await gameLogic!.drawCard('deck');
         if (card != null) {
-          animateDrawnCard(card, from: deckUI.toRect().center);
+          animateDrawnCard(card, from: deckUI.toRect().center, playerId: playerId);
         }
       }
     } else if (discardZone.contains(tapPosition.toOffset())) {
       if (!gameLogic!.hasDrawnCard) {
         final card = await gameLogic!.drawCard('discardPile');
         if (card != null) {
-          animateDrawnCard(card, from: discardZone.center);
+          animateDrawnCard(card, from: discardZone.center, playerId: playerId);
         }
       }
     }
   }
 
-  void animateDrawnCard(CardEntity card, {required Offset from}) {
+  void animateDrawnCard(CardEntity card, {required Offset from, required String playerId}) {
     final animatedCard = CardComponent(
-      card:card,
-      ownerId: gameLogic!.players[playerIndex].id,
+      card: card,
+      ownerId: playerId,
       gameLogic: gameLogic!,
-      onCardsDropped: handleCardsDrop,
+      onCardsDropped: (_) {},
     )
       ..position = Vector2(from.dx, from.dy)
       ..priority = 100;
 
     add(animatedCard);
 
-    // Dynamisches Ziel: z. B. Kartenhand unten rechts positionieren (darfst anpassen!)
-    final handCardCount = children.whereType<CardComponent>().length;
-    final xOffset = 100.0 + (handCardCount * 40);
-    final targetPosition = Vector2(xOffset, size.y - 180);
+    // Berechne Zielposition
+    Vector2 targetPosition;
 
+    if (playerId == this.playerId) {
+      // Eigene Handposition
+      final currentHandCount = gameLogic!.players[playerIndex].hand.length;
+      final cardWidth = 50.0;
+      final maxSpacing = 50.0;
+      final totalWidth = (currentHandCount - 1) * maxSpacing + cardWidth;
+      final spacing = totalWidth > size.x ? (size.x - cardWidth) / (currentHandCount - 1) : maxSpacing;
+      final handWidth = (currentHandCount - 1) * spacing + cardWidth;
+      final startPos = Vector2((size.x - handWidth) / 2, size.y - 150);
+      targetPosition = startPos;
+    } else {
+      // Position des anderen Spielers
+      targetPosition = playerPositions[playerId] ?? Vector2.zero();
+    }
+
+    // Bewegung
     animatedCard.add(
       MoveEffect.to(
         targetPosition,
         EffectController(duration: 0.5, curve: Curves.easeInOut),
         onComplete: () {
           animatedCard.removeFromParent();
-          updateUI(); // Zeige echte Karte in der Hand
+          updateUI();
         },
       ),
     );
   }
-
 }

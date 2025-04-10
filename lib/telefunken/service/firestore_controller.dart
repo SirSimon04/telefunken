@@ -144,6 +144,7 @@ class FirestoreController {
         'name': playerName,
         'hand': [],
         'isAI': false,
+        'coins': 7,
         'points': 0,
       });
 
@@ -204,16 +205,34 @@ class FirestoreController {
   Stream<DocumentSnapshot<Map<String, dynamic>>> listenToGameState(String gameId) {
     final gameRef = _firestore.collection('games').doc(gameId);
     return gameRef.snapshots();
-  }
-
-  // Beobachte Änderungen des Spielerstatus
+  }  
+  
   Stream<List<Map<String, dynamic>>> listenToPlayersUpdate(String gameId) {
     final playersRef = _firestore.collection('games').doc(gameId).collection('players');
     return playersRef.snapshots().map((snapshot) {
       return snapshot.docs.map((doc) => doc.data()).toList();
     });
   }
+  
+  Stream<Map<String, dynamic>?> listenToCardDraw(String gameId) {
+    return FirebaseFirestore.instance
+        .collection('games')
+        .doc(gameId)
+        .snapshots()
+        .map((snapshot) => snapshot.data()?['lastDraw']);
+  }
 
+
+  Future<void> updatePlayer(String gameId, String playerId, Map<String, dynamic> playerData) async {
+    try {
+      final playerRef = _firestore.collection('games').doc(gameId).collection('players').doc(playerId);
+      await playerRef.update(playerData);
+    } catch (e) {
+      print('Error updating player: $e');
+      rethrow;
+    }
+  }
+  
   // Spielstatus aktualisieren
   Future<void> updateGameState(String gameId, Map<String, dynamic> gameState) async {
     try {
