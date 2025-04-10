@@ -1,5 +1,3 @@
-// Enthält alle Firestore-CRUD-Operationen (Spiel erstellen, joinen, Starten, Spielstatus beobachten, etc.).
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:telefunken/telefunken/domain/entities/deck.dart';
 import 'package:telefunken/telefunken/domain/entities/player.dart';
@@ -17,155 +15,224 @@ class FirestoreController {
     int duration, {
     String? password,
   }) async {
-    final gameDoc = await _firestore.collection('games').add({
-      'room_name': roomName,
-      'owner': hostPlayerName,
-      'current_players': 0,
-      'max_players': maxPlayers,
-      'rules': ruleSet,
-      'round_duration': duration,
-      'created_at': FieldValue.serverTimestamp(),
-      'password': password,
-      'isGameStarted': false,
-      'deck': [],
-      'table': [],
-      'discardPile': [],
-      'currentPlayer': '',
-    });
+    try {
+      final gameDoc = await _firestore.collection('games').add({
+        'room_name': roomName,
+        'owner': hostPlayerName,
+        'current_players': 0,  // Host startet mit 1 Spieler
+        'max_players': maxPlayers,
+        'rules': ruleSet,
+        'round_duration': duration,
+        'created_at': FieldValue.serverTimestamp(),
+        'password': password,
+        'isGameStarted': false,
+        'deck': [],
+        'table': [],
+        'discardPile': [],
+        'currentPlayer': hostPlayerName,
+      });
 
-    return gameDoc.id;
+      return gameDoc.id;
+    } catch (e) {
+      print('Error creating game: $e');
+      rethrow;
+    }
   }
 
   Future<void> startGame(String gameId) async {
-    final gameRef = _firestore.collection('games').doc(gameId);
+    try {
+      final gameRef = _firestore.collection('games').doc(gameId);
+      final gameSnapshot = await gameRef.get();
+      final maxPlayers = gameSnapshot.data()?['max_players'] ?? 0;
 
-    // Wait until all players have joined
-    final gameSnapshot = await gameRef.get();
-    final maxPlayers = gameSnapshot.data()?['max_players'] ?? 0;
+      List<Map<String, dynamic>> playersData = [];
+      while (playersData.length < maxPlayers) {
+        playersData = await getPlayers(gameId);
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
 
-    List<Map<String, dynamic>> playersData = [];
-    while (playersData.length < maxPlayers) {
-      playersData = await getPlayers(gameId);
-      await Future.delayed(const Duration(milliseconds: 500));
-    }
+      final players = playersData.map((data) => Player.fromMap(data)).toList();
+      players.shuffle();
 
-    final players = playersData.map((data) => Player.fromMap(data)).toList();
-    players.shuffle();
+      final deck = Deck();
+      deck.shuffle();
 
-    final deck = Deck();
-    deck.shuffle();
+      int playerIndex = 0;
+      int cardsToDeal = players.length * 11 + 1;
+      for (int i = 0; i < cardsToDeal; i++) {
+        final card = deck.dealOne();
+        players[playerIndex].addCardToHand(card);
+        playerIndex = (playerIndex + 1) % players.length;
+      }
 
-    int playerIndex = 0;
-    int cardsToDeal = players.length * 11 + 1;
-    for (int i = 0; i < cardsToDeal; i++) {
-      final card = deck.dealOne();
-      players[playerIndex].addCardToHand(card);
-      playerIndex = (playerIndex + 1) % players.length;
-    }
+      const rankOrder = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+      const suitOrder = ['Joker', 'C', 'D', 'H', 'S'];
+      for (var player in players) {
+        player.hand.sort((a, b) {
+          final rankCompare = rankOrder.indexOf(a.rank).compareTo(rankOrder.indexOf(b.rank));
+          if (rankCompare != 0) return rankCompare;
+          return suitOrder.indexOf(a.suit).compareTo(suitOrder.indexOf(b.suit));
+        });
+      }
 
-    const rankOrder = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
-    const suitOrder = ['Joker', 'C', 'D', 'H', 'S'];
-    for (var player in players) {
-      player.hand.sort((a, b) {
-        final rankCompare = rankOrder.indexOf(a.rank).compareTo(rankOrder.indexOf(b.rank));
-        if (rankCompare != 0) return rankCompare;
-        return suitOrder.indexOf(a.suit).compareTo(suitOrder.indexOf(b.suit));
+      for (var player in players) {
+        await gameRef.collection('players').doc(player.id).update({
+          'hand': player.hand.map((card) => card.toMap()).toList(),
+        });
+      }
+
+      await gameRef.update({
+        'current_players': players.length,
+        'deck': deck.cards.map((card) => card.toMap()).toList(),
+        'table': [],
+        'discardPile': [],
+        'currentPlayer': players[0].id,
+        'isGameStarted': true,
+        'roundNumber': 1,
       });
+    } catch (e) {
+      print('Error starting game: $e');
+      rethrow;
     }
-
-    for (var player in players) {
-      await gameRef.collection('players').doc(player.id).update({
-        'hand': player.hand.map((card) => card.toMap()).toList(),
-      });
-    }
-
-    await gameRef.update({
-      'current_players': players.length,
-      'deck': deck.cards.map((card) => card.toMap()).toList(),
-      'table': [],
-      'discardPile': [],
-      'currentPlayer': players[0].id,
-      'isGameStarted': true,
-      'roundNumber': 1,
-    });
-  }
-
-// Aktualisiere den Spielstatus
-  Future<void> updateGameState(String gameId, Map<String, dynamic> gameState) async {
-    final gameRef = _firestore.collection('games').doc(gameId);
-    await gameRef.update(gameState);
   }
 
 //Deck
   Future<void> resetDeck(String gameId) async {
-    final deck = Deck();
-    deck.shuffle();
-    final gameRef = _firestore.collection('games').doc(gameId);
-    await gameRef.collection('deck').doc('deck').set({
-      'cards': deck.cards.map((card) => card.toMap()).toList(),
-    });
+    try {
+      final deck = Deck();
+      deck.shuffle();
+      final gameRef = _firestore.collection('games').doc(gameId);
+      await gameRef.collection('deck').doc('deck').set({
+        'cards': deck.cards.map((card) => card.toMap()).toList(),
+      });
+    } catch (e) {
+      print('Error resetting deck: $e');
+      rethrow;
+    }
   }
 
   Future<List<Map<String, dynamic>>> getDeck(String gameId) async {
-    final gameRef = _firestore.collection('games').doc(gameId);
-    final gameSnapshot = await gameRef.get();
-    final deck = gameSnapshot.data()?['deck'] as List<dynamic>?;
-
-    if (deck != null && deck.isNotEmpty) {
-      try {
+    try {
+      final gameRef = _firestore.collection('games').doc(gameId);
+      final gameSnapshot = await gameRef.get();
+      final deck = gameSnapshot.data()?['deck'] as List<dynamic>?;
+      if (deck != null && deck.isNotEmpty) {
         return deck.map((card) => Map<String, dynamic>.from(card)).toList();
-      } catch (e) {
-        print('Error processing deck data: $e');
+      } else {
+        print('Deck data is missing or empty.');
         return [];
       }
-    } else {
-      print('Deck data is missing or empty in Firestore.');
+    } catch (e) {
+      print('Error fetching deck: $e');
       return [];
     }
   }
 
 //Spieler
   Future<String> addPlayer(String gameId, String playerName) async {
-    final gameRef = _firestore.collection('games').doc(gameId);
+    try {
+      final gameRef = _firestore.collection('games').doc(gameId);
+      final playerId = Uuid().v4();
 
-    // Spieler zur Liste hinzufügen
-    await gameRef.update({
-      'current_players': FieldValue.increment(1),
-    });
+      await gameRef.update({
+        'current_players': FieldValue.increment(1),
+      });
 
-    // Spieler-Details speichern
-    final playerId = Uuid().v4();
-    final playerRef = gameRef.collection('players').doc(playerId);
-    await playerRef.set({
-      'id': playerId,
-      'name': playerName,
-      'hand': [],
-      'isAI': false,
-      'points': 0,
-    });
+      final playerRef = gameRef.collection('players').doc(playerId);
+      await playerRef.set({
+        'id': playerId,
+        'name': playerName,
+        'hand': [],
+        'isAI': false,
+        'points': 0,
+      });
 
-    return playerId;
+      return playerId;
+    } catch (e) {
+      print('Error adding player: $e');
+      rethrow;
+    }
   }
 
   Future<List<Map<String, dynamic>>> getPlayers(String gameId) async {
-    final playersSnapshot = await _firestore.collection('games').doc(gameId).collection('players').get();
-    return playersSnapshot.docs.map((doc) => doc.data()).toList();
+    try {
+      final playersSnapshot = await _firestore.collection('games').doc(gameId).collection('players').get();
+      return playersSnapshot.docs.map((doc) => doc.data()).toList();
+    } catch (e) {
+      print('Error fetching players: $e');
+      return [];
+    }
   }
 
-// Beobachte Änderungen im Spielstatus
+  Future<void> removePlayer(String gameId, String playerId) async {
+    try {
+      final gameRef = _firestore.collection('games').doc(gameId);
+      final playerRef = gameRef.collection('players').doc(playerId);
+
+      await gameRef.update({
+        'current_players': FieldValue.increment(-1),
+      });
+
+      await playerRef.delete();
+    } catch (e) {
+      print('Error removing player: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> updatePlayerHand(String gameId, String playerId, List<Map<String, dynamic>> hand) async {
+    try {
+      final playerRef = _firestore.collection('games').doc(gameId).collection('players').doc(playerId);
+      await playerRef.update({'hand': hand});
+    } catch (e) {
+      print('Error updating player hand: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> updatePlayerPoints(String gameId, String playerId, int points) async {
+    try {
+      final playerRef = _firestore.collection('games').doc(gameId).collection('players').doc(playerId);
+      await playerRef.update({'points': points});
+    } catch (e) {
+      print('Error updating player points: $e');
+      rethrow;
+    }
+  }
+
+  // Beobachte Änderungen im Spielstatus
   Stream<DocumentSnapshot<Map<String, dynamic>>> listenToGameState(String gameId) {
     final gameRef = _firestore.collection('games').doc(gameId);
     return gameRef.snapshots();
   }
 
-//stop listening to gamestate
-  Future<void> stopListeningToGameState(String gameId) async {
-    final gameRef = _firestore.collection('games').doc(gameId);
-    await gameRef.snapshots().first;
+  // Beobachte Änderungen des Spielerstatus
+  Stream<List<Map<String, dynamic>>> listenToPlayersUpdate(String gameId) {
+    final playersRef = _firestore.collection('games').doc(gameId).collection('players');
+    return playersRef.snapshots().map((snapshot) {
+      return snapshot.docs.map((doc) => doc.data()).toList();
+    });
   }
 
+  // Spielstatus aktualisieren
+  Future<void> updateGameState(String gameId, Map<String, dynamic> gameState) async {
+    try {
+      final gameRef = _firestore.collection('games').doc(gameId);
+      await gameRef.update(gameState);
+    } catch (e) {
+      print('Error updating game state: $e');
+      rethrow;
+    }
+  }
+
+  // Hole das komplette Spiel-Dokument
   Future<DocumentSnapshot<Map<String, dynamic>>> getGame(String gameId) async {
-    final gameRef = _firestore.collection('games').doc(gameId);
-    return await gameRef.get();
+    try {
+      final gameRef = _firestore.collection('games').doc(gameId);
+      return await gameRef.get();
+    } catch (e) {
+      print('Error fetching game: $e');
+      rethrow;
+    }
   }
 }
