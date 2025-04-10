@@ -62,4 +62,12 @@ class Player {
   void setOut() {
     isOut = true;
   }
+
+  int getCoins() {
+    return coins;
+  }
+
+  void removeCoin() {
+    coins --;
+  }
 }

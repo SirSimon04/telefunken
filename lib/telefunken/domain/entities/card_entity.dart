@@ -32,4 +32,11 @@ class CardEntity {
 
   @override
   int get hashCode => suit.hashCode ^ rank.hashCode;
+
+  static fromJson(drawData) {
+    return CardEntity(
+      suit: drawData['suit'] as String,
+      rank: drawData['rank'] as String,
+    );
+  }
 }
