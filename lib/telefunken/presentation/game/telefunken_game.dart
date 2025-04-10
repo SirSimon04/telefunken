@@ -444,11 +444,9 @@ void listenToDrawAnimationTrigger() {
 
     add(animatedCard);
 
-    // Berechne Zielposition
     Vector2 targetPosition;
 
     if (playerId == this.playerId) {
-      // Eigene Handposition
       final currentHandCount = gameLogic!.players[playerIndex].hand.length;
       final cardWidth = 50.0;
       final maxSpacing = 50.0;
@@ -458,11 +456,9 @@ void listenToDrawAnimationTrigger() {
       final startPos = Vector2((size.x - handWidth) / 2, size.y - 150);
       targetPosition = startPos;
     } else {
-      // Position des anderen Spielers
       targetPosition = playerPositions[playerId] ?? Vector2.zero();
     }
 
-    // Bewegung
     animatedCard.add(
       MoveEffect.to(
         targetPosition,
