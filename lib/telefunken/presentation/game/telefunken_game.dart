@@ -255,7 +255,6 @@ class TelefunkenGame extends FlameGame with TapDetector {
     const cardWidth = 50.0;
     const cardHeight = 70.0;
     final card = gameLogic!.discardPile.last;
-    print(card.toString());
 
     add(LabeledSpriteComponent(
       label: 'discard',
@@ -369,10 +368,8 @@ class TelefunkenGame extends FlameGame with TapDetector {
       final isGameStarted = data['isGameStarted'] ?? false;
       if (isGameStarted && !_isGameLogicInitialized) {
         _isGameLogicInitialized = true;
-        print("init gamelogic");
         _initializeGameLogic();
       } else if (waitingForPlayersText.parent != null) {
-        print("update waiting text");
         _updateWaitingText(currentPlayers);
       }
 
@@ -386,86 +383,93 @@ class TelefunkenGame extends FlameGame with TapDetector {
     //updateUI();
   }
 
-void listenToDrawAnimationTrigger() {
+  void listenToDrawAnimationTrigger() {
     firestoreController.listenToCardDraw(gameId).listen((drawData) {
       if (drawData == null) return;
+
+      final playerIdOfDraw = drawData['playerId'];
+      if (playerIdOfDraw == playerId) return;
 
       final source = drawData['source'];
       final card = source == 'deck'
           ? CardEntity(suit: 'Back', rank: '_Red')
           : CardEntity.fromJson(drawData['card']);
-      final playerIdOfDraw = drawData['playerId'];
 
-      // Keine doppelte Animation auslösen, wenn du selbst gezogen hast – du animierst das lokal
-      if (playerIdOfDraw == playerId) return;
-
-      final Offset from = (source == 'deck') 
-        ? deckUI.position.toOffset() 
-        : discardZone.center;
+      final Offset from = (source == 'deck')
+          ? deckUI.position.toOffset()
+          : discardZone.center;
 
       animateDrawnCard(card, from: from, playerId: playerIdOfDraw);
     });
   }
 
   @override
-  void onTapDown(TapDownInfo info) async {
+  void onTapDown(TapDownInfo info) {
     final tapPosition = info.eventPosition.global;
 
     if (!gameLogic!.isPlayersTurn(playerId)) return;
+    if(gameLogic!.hasDrawnCard) return;
 
-    if (deckUI.toRect().contains(tapPosition.toOffset())) {
+    if (deckUI.toRect().contains(tapPosition.toOffset()) && !gameLogic!.hasDrawnCard) {
+      gameLogic!.drawCard('deck');
+    } else if (discardZone.contains(tapPosition.toOffset()) && !gameLogic!.hasDrawnCard) {
       if (!gameLogic!.hasDrawnCard) {
-        final card = await gameLogic!.drawCard('deck');
-        if (card != null) {
-          animateDrawnCard(card, from: deckUI.toRect().center, playerId: playerId);
-        }
-      }
-    } else if (discardZone.contains(tapPosition.toOffset())) {
-      if (!gameLogic!.hasDrawnCard) {
-        final card = await gameLogic!.drawCard('discardPile');
-        if (card != null) {
-          animateDrawnCard(card, from: discardZone.center, playerId: playerId);
-        }
+        gameLogic!.drawCard('discardPile');
       }
     }
   }
 
-  void animateDrawnCard(CardEntity card, {required Offset from, required String playerId}) {
-    final animatedCard = CardComponent(
-      card: card,
-      ownerId: playerId,
-      gameLogic: gameLogic!,
-      onCardsDropped: (_) {},
-    )
-      ..position = Vector2(from.dx, from.dy)
-      ..priority = 100;
+  void animateDrawnCard(CardEntity card, {required Offset from, required String playerId}) async {
+    final player = gameLogic!.players.firstWhere(
+      (p) => p.id == playerId,
+      orElse: () => gameLogic!.players.first,
+    );
+    final playerName = player.name;
+
+    // Create the animated card
+    final animatedCard = SpriteComponent()
+      ..sprite = Sprite(await images.load('cards/${card.toString()}.png'))
+      ..position =Vector2(from.dx, from.dy)
+      ..size = Vector2(50, 70)
+      ..anchor = Anchor.center;
+
+
+    // final animatedCard = CardComponent(
+    //   card: card,
+    //   ownerId: playerId,
+    //   gameLogic: gameLogic!,
+    //   onCardsDropped: null,
+    // )
+    // ..position = Vector2(from.dx, from.dy)
+    // ..priority = 100;
 
     add(animatedCard);
 
-    Vector2 targetPosition;
+    animatedCard.priority = 100;
+
+    Vector2? targetPosition;
 
     if (playerId == this.playerId) {
-      final currentHandCount = gameLogic!.players[playerIndex].hand.length;
-      final cardWidth = 50.0;
-      final maxSpacing = 50.0;
-      final totalWidth = (currentHandCount - 1) * maxSpacing + cardWidth;
-      final spacing = totalWidth > size.x ? (size.x - cardWidth) / (currentHandCount - 1) : maxSpacing;
-      final handWidth = (currentHandCount - 1) * spacing + cardWidth;
-      final startPos = Vector2((size.x - handWidth) / 2, size.y - 150);
-      targetPosition = startPos;
-    } else {
-      targetPosition = playerPositions[playerId] ?? Vector2.zero();
-    }
+        final currentHandCount = player.hand.length;
+        final cardWidth = 50.0;
+        final maxSpacing = 50.0;
+        final totalWidth = (currentHandCount - 1) * maxSpacing + cardWidth;
+        final spacing = totalWidth > size.x ? (size.x - cardWidth) / (currentHandCount - 1) : maxSpacing;
+        final handWidth = (currentHandCount - 1) * spacing + cardWidth;
+        targetPosition = Vector2((size.x - handWidth) / 2, size.y - 150);
+      } else {
+        targetPosition = playerPositions[playerName];
+      }
 
+    updateUI();
     animatedCard.add(
-      MoveEffect.to(
-        targetPosition,
-        EffectController(duration: 0.5, curve: Curves.easeInOut),
-        onComplete: () {
-          animatedCard.removeFromParent();
-          updateUI();
-        },
-      ),
-    );
+     MoveEffect.to(
+      targetPosition!,
+      EffectController(duration: 1.0, curve: Curves.easeInOut),
+      onComplete: () {
+        remove(animatedCard);
+      }
+    ));
+    await Future.delayed(const Duration(milliseconds: 100));
   }
 }

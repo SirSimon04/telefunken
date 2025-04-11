@@ -214,12 +214,43 @@ class FirestoreController {
     });
   }
   
+  Future<void> createDrawEvent(
+      String gameId, String playerId, Map<String, dynamic> card, String source) async {
+    try {
+      final drawEventsRef = _firestore
+          .collection('games')
+          .doc(gameId)
+          .collection('draw_events')
+          .doc(); // Auto-ID für jedes Event
+
+      await drawEventsRef.set({
+        'gameId': gameId,
+        'playerId': playerId,
+        'card': card,
+        'source': source,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      print('Error creating draw event: $e');
+      rethrow;
+    }
+  }
+
   Stream<Map<String, dynamic>?> listenToCardDraw(String gameId) {
-    return FirebaseFirestore.instance
+    return _firestore
         .collection('games')
         .doc(gameId)
+        .collection('draw_events')
+        .orderBy('timestamp', descending: true)
+        .limit(1)
         .snapshots()
-        .map((snapshot) => snapshot.data()?['lastDraw']);
+        .map((snapshot) {
+      if (snapshot.docs.isNotEmpty) {
+        return snapshot.docs.first.data();
+      } else {
+        return null;
+      }
+    });
   }
 
 
