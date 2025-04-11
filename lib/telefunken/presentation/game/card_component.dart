@@ -34,7 +34,7 @@ class CardComponent extends SpriteComponent with TapCallbacks, DragCallbacks, Co
     sprite = await Sprite.load(spritePath);
     size = Vector2(50, 75);
     anchor = Anchor.topLeft;
-    originalPosition = position?.clone() ?? Vector2.zero();
+    originalPosition = position.clone();
     add(RectangleHitbox());
   }
 

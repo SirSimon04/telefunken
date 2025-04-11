@@ -7,7 +7,7 @@ import 'base_screen.dart';
 
 class JoinGameScreen extends StatelessWidget {
   JoinGameScreen({Key? key}) : super(key: key);
-  ScrollController _scrollController = ScrollController();
+  final ScrollController _scrollController = ScrollController();
 
   @override
   Widget build(BuildContext context) {

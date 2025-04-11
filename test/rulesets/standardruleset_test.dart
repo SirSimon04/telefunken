@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:telefunken/telefunken/domain/entities/card_entity.dart';
-import 'package:telefunken/telefunken/domain/rules/rule_set.dart';
 import 'package:telefunken/telefunken/domain/rules/standard_rule_set.dart';
 
 void main() {
