@@ -1,10 +1,8 @@
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:telefunken/telefunken/domain/entities/player.dart';
-import 'package:telefunken/telefunken/domain/logic/game_logic.dart';
-import 'package:telefunken/telefunken/domain/rules/rule_set.dart';
+//import 'package:telefunken/telefunken/domain/rules/rule_set.dart';
 import 'package:telefunken/telefunken/presentation/game/telefunken_game.dart';
-import 'package:telefunken/telefunken/presentation/screens/game_screen.dart';
 import 'package:telefunken/telefunken/service/firestore_controller.dart';
 import 'package:uuid/uuid.dart';
 
@@ -40,8 +38,8 @@ class _PlayOfflineScreenState extends State<PlayOfflineScreen> {
       // Alle Eingaben validiert
       String playerName = _playerNameController.text.trim();
       int maxPlayers = _selectedPlayers;
-      String ruleSet = _selectedRuleSet;
-      int roundDuration = int.parse(_selectedRoundDuration);
+      //String ruleSet = _selectedRuleSet;
+      //int roundDuration = int.parse(_selectedRoundDuration);
 
       // Spieler erstellen
       List<Player> players = List.generate(
@@ -54,7 +52,8 @@ class _PlayOfflineScreenState extends State<PlayOfflineScreen> {
       );
 
       // Regelwerk erstellen
-      RuleSet selectedRuleSet = RuleSet.fromName(ruleSet);
+      //RuleSet selectedRuleSet = RuleSet.fromName(ruleSet);
+
 
       // GameLogic initialisieren
       final game = TelefunkenGame(

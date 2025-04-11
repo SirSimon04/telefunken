@@ -1,5 +1,4 @@
 import 'dart:math';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flame/effects.dart';
 import 'package:flame/events.dart';
 import 'package:flame/game.dart';
@@ -174,7 +173,6 @@ class TelefunkenGame extends FlameGame with TapDetector {
 
     final cardCount = gameLogic!.players[playerIndex].hand.length;
     final cardWidth = 50.0;
-    final minSpacing = 15.0;
     final maxSpacing = 50.0;
     final totalWidth = (cardCount - 1) * maxSpacing + cardWidth;
     final spacing = totalWidth > size.x ? (size.x - cardWidth) / (cardCount - 1) : maxSpacing;
