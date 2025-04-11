@@ -65,8 +65,8 @@ class FirestoreController {
         playerIndex = (playerIndex + 1) % players.length;
       }
 
-      const rankOrder = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
-      const suitOrder = ['Joker', 'C', 'D', 'H', 'S'];
+      const rankOrder = ['Joker' 'Joker1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+      const suitOrder = ['C', 'D', 'H', 'S'];
       for (var player in players) {
         player.hand.sort((a, b) {
           final rankCompare = rankOrder.indexOf(a.rank).compareTo(rankOrder.indexOf(b.rank));
