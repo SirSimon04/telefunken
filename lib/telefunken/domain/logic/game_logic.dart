@@ -290,7 +290,7 @@ class GameLogic {
           points += 20;
         } else if (card.rank == 'A') {
           points += 15;
-        } else if (card.suit == 'Joker') {
+        } else if (card.rank == 'Joker') {
           points += 50;
         } else if (['3', '4', '5', '6', '7'].contains(card.rank)) {
           points += 5;
@@ -402,16 +402,12 @@ class GameLogic {
 
 
   ///ToDo:
-  /// - Update die Spielerhände von den anderen
-  /// 
   /// - Gerade ist es Random ob die Reiehnfolge der Spieler richtig angezeigt wird.
-  /// - Wenn man mehrere Karten hochzieht und ablegen möchte sind sie manchmal noch weit auseinander. Bspw 2, 9, 9. Sie sollen beim "verschieben" nebeneinander angezeigt werden
-  /// - Gerade ist der Fehler, wenn die Karten zum Ursprung zurück "fliegen", dann sind sie doppelt da..
-  /// - Anstelle vom eigenen Namen soll da einfach "You" stehen
-  /// - Karten ziehen implementieren: Zu Rundenbeginn !MUSS! eine Karte entweder vom Kartenstapel oder vom Ablagestapel gezogen werden!! In dieser Zeit kann der Spieler keine Karten ablegen
+
   /// - Regelwerk überarbeiten
   /// - Punktevergabe überarbeiten und Punktzahl neben dem Spieler anzeigen 
   /// - Rundencounter in die Ecke hauen
+  /// - Buy Button für die Karten
   /// - Am Spielende soll das Spielfeld 3 Sekunden lang stehen bleiben, dann navigiert man zu einer neuen Seite, wo eine Tabelle mit den Spieler und der Punkte und den bekommenen Punkten per Runde angezeigt wird.
   /// - Karten an andere Karten anlegen können
   /// - Bei den anlegenden Karten schauen ob man einen Joker ersetzen und benutzen kann

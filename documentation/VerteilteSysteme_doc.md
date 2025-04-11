@@ -1,0 +1,1 @@
+# Was würden wir machen, wenn Google auf einmal FireBase abschaltet oder auf ein Abomodell ändert?

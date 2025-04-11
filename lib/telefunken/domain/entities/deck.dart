@@ -18,8 +18,8 @@ class Deck {
       }
     }
     // Zwei Joker hinzufügen
-    singleSet.add(CardEntity(suit: "Joker", rank: ""));
-    singleSet.add(CardEntity(suit: "Joker", rank: "2"));
+    singleSet.add(CardEntity(suit: "", rank: "Joker"));
+    singleSet.add(CardEntity(suit: "", rank: "Joker2"));
 
     // Zwei Sets ergeben insgesamt 108 Karten
     cards.addAll(singleSet);
