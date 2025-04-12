@@ -5,12 +5,12 @@ class Player {
   final String name;
   final bool isAI;
 
-  late bool isOut;
+  late bool out;
   List<CardEntity> hand = [];
   late int coins;
   late int points;
 
-  Player({required this.id, required this.name, this.isAI = false, this.isOut = false});
+  Player({required this.id, required this.name, this.isAI = false, this.out = false});
 
   void addCardToHand(CardEntity card) {
     hand.add(card);
@@ -39,7 +39,7 @@ class Player {
       name: map['name'] as String,
       isAI: map['isAI'] as bool? ?? false,
     )
-      ..isOut = map['isOut'] as bool? ?? false
+      ..out = map['isOut'] as bool? ?? false
       ..hand = (map['hand'] as List).map((card) => CardEntity.fromMap(card as Map<String, dynamic>)).toList()
       ..coins = map['coins'] as int? ?? 0
       ..points = map['points'] as int? ?? 0;
@@ -60,7 +60,11 @@ class Player {
   }
 
   void setOut() {
-    isOut = true;
+    out = true;
+  }
+
+  bool isOut() {
+    return out;
   }
 
   int getCoins() {
@@ -69,5 +73,13 @@ class Player {
 
   void removeCoin() {
     coins --;
+  }
+
+  int getPoints(){
+    return points;
+  }
+
+  void addPoints(int points){
+    points += points;
   }
 }

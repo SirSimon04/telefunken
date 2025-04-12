@@ -285,4 +285,39 @@ class FirestoreController {
       rethrow;
     }
   }
+
+  // Rundenpunktzahl
+  Future<void> updateRoundScores(
+    String gameId, int roundNumber, Map<String, int> playerScores) async {
+    try {
+      await _firestore
+          .collection('games')
+          .doc(gameId)
+          .collection('round_scores')
+          .doc(roundNumber.toString())
+          .set(playerScores);
+    } catch (e) {
+      print('Error updating round scores: $e');
+    }
+  }
+
+  Future<Map<String, int>> getRoundScores(String gameId, int roundNumber) async {
+    try {
+      final doc = await _firestore
+          .collection('games')
+          .doc(gameId)
+          .collection('round_scores')
+          .doc(roundNumber.toString())
+          .get();
+
+      if (doc.exists) {
+        return Map<String, int>.from(doc.data() as Map<String, dynamic>);
+      } else {
+        return {};
+      }
+    } catch (e) {
+      print('Error getting round scores: $e');
+      return {};
+    }
+  }
 }

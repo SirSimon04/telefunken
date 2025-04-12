@@ -493,16 +493,6 @@ class TelefunkenGame extends FlameGame with TapDetector {
       ..size = Vector2(50, 70)
       ..anchor = Anchor.center;
 
-
-    // final animatedCard = CardComponent(
-    //   card: card,
-    //   ownerId: playerId,
-    //   gameLogic: gameLogic!,
-    //   onCardsDropped: null,
-    // )
-    // ..position = Vector2(from.dx, from.dy)
-    // ..priority = 100;
-
     add(animatedCard);
 
     animatedCard.priority = 100;
