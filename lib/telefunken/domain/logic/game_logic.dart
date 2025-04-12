@@ -38,7 +38,10 @@ class GameLogic {
       ruleSet = RuleSet.fromName(gameData['rules']);
 
       maxPlayers = gameData['max_players'] ?? 0;
-      currentPlayerIndex = players.indexWhere((p) => p.id == gameData['currentPlayer']);
+      final index = players.indexWhere((p) => p.id == gameData['currentPlayer']);
+      if (index < 0) {
+        currentPlayerIndex = index;
+      }
       roundNumber = gameData['roundNumber'] ?? 1;
 
       final playersData = await firestoreController.getPlayers(gameId);
@@ -104,6 +107,7 @@ class GameLogic {
       'currentPlayer': players[currentPlayerIndex].id,
       'discardPile': discardPile.map((card) => card.toMap()).toList(),
     });
+    await Future.delayed(const Duration(milliseconds: 200));
   }
 
   // Karte ziehen

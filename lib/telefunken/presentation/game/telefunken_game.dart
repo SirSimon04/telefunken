@@ -6,6 +6,7 @@ import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
 import 'package:telefunken/telefunken/domain/entities/card_entity.dart';
 import 'package:telefunken/telefunken/presentation/game/card_component.dart';
+import 'package:telefunken/telefunken/presentation/game/labeledTextComponent.dart';
 import 'package:telefunken/telefunken/presentation/game/labeled_sprite_component.dart';
 import 'package:telefunken/telefunken/service/firestore_controller.dart';
 import '../../domain/entities/player.dart';
@@ -19,6 +20,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
 
   GameLogic? gameLogic;
   final Map<String, Vector2> playerPositions = {};
+  final Map<String, List<SpriteComponent>> playerCoinSprites = {};
 
   late int playerIndex;
   late int maxPlayers;
@@ -104,29 +106,22 @@ class TelefunkenGame extends FlameGame with TapDetector {
     _distributeCards(deckPosition);
   }
 
-  void _displayPlayers(List<Player> players) {
+  void _displayPlayers(List<Player> players) async {
     final radius = 180.0;
     for (int i = 0; i < players.length; i++) {
+      final player = players[i];
       final angle = players.length > 1
           ? pi / 3 + (2 * pi / 3 - pi / 3) * (i / (players.length - 1))
           : pi / 3;
       final playerPos = deckPosition - Vector2(radius * cos(angle), radius * sin(angle));
-      playerPositions[players[i].name] = playerPos;
-      var text = players[i].name == playerName
-          ? 'You'
-          : players[i].name;
-      add(TextComponent(
-        text: text,
+      playerPositions[player.name] = playerPos;
+
+      // Basic TextComponent ohne Label
+      add(LabeledTextComponent(
+        label: 'playerName',
+        text: player.name == playerName ? 'You' : player.name,
         textRenderer: TextPaint(style: const TextStyle(fontSize: 18, color: Colors.white)),
         position: playerPos,
-        anchor: Anchor.center,
-      ));
-
-      //add coins above
-      add(TextComponent(
-        text: players[i].coins.toString(),
-        textRenderer: TextPaint(style: const TextStyle(fontSize: 18, color: Colors.white)),
-        position: playerPos + Vector2(0, -20),
         anchor: Anchor.center,
       ));
     }
@@ -265,7 +260,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
     ));
   }
 
-  void updateUI() {
+  void updateUI() async {
     if (!_isGameLogicInitialized || gameLogic == null || gameLogic!.players.isEmpty) {
       return;
     }
@@ -283,6 +278,71 @@ class TelefunkenGame extends FlameGame with TapDetector {
     displayOpponentsHand();
     showTable();
     showDiscardPile();
+    updatePlayersText();
+    updateCoinTexts();
+  }
+
+  void updatePlayersText() async {
+    print("Update Players Text");
+    // Entferne alte Spielernamen-Texte
+    children.whereType<LabeledTextComponent>().forEach((component) {
+      if (component.label == 'playerName') {
+        remove(component);
+      }
+    });
+
+
+    for (var player in gameLogic!.players) {
+      final playerPos = playerPositions[player.name] ?? Vector2.zero();
+      var text = player.name == playerName
+          ? 'You'
+          : player.name;
+
+      // Textstil für den aktuellen Spieler
+      TextStyle textStyle = const TextStyle(fontSize: 18, color: Colors.white);
+      if (gameLogic!.isPlayersTurn(player.id)) {
+        textStyle = const TextStyle(
+          fontSize: 20, // etwas größer
+          color: Colors.orange, // orange Farbe
+          fontWeight: FontWeight.bold, // fett
+        );
+      }
+
+      add(LabeledTextComponent(
+        label: 'playerName',
+        text: text,
+        textRenderer: TextPaint(style: textStyle),
+        position: playerPos,
+        anchor: Anchor.center,
+      ));
+    }
+  }
+
+  void updateCoinTexts() async {
+    for (var player in gameLogic!.players) {
+      // Entferne alte Coin-Sprites
+      if (playerCoinSprites.containsKey(player.id)) {
+        for (var coinSprite in playerCoinSprites[player.id]!) {
+          remove(coinSprite);
+        }
+        playerCoinSprites[player.id]!.clear();
+      }
+
+      // Erstelle neue Coin-Sprites
+      List<SpriteComponent> coinSprites = [];
+      for (int j = 0; j < player.coins; j++) {
+        final playerPos = playerPositions[player.name] ?? Vector2.zero();
+        final coinSprite = SpriteComponent(
+          sprite: await loadSprite('coin.png'),
+          size: Vector2(20, 20),
+          position: playerPos + Vector2(j * 12 - (player.coins - 1) * 5, -20),
+          anchor: Anchor.center,
+        );
+        add(coinSprite);
+        coinSprites.add(coinSprite);
+      }
+      playerCoinSprites[player.id] = coinSprites;
+    }
   }
 
   void showDrawPile() async {

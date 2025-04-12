@@ -25,6 +25,12 @@ class StandardRuleSet extends RuleSet {
   }
 
   String? _getGroupTargetRank(List<CardEntity> cards) {
+    final nonJokers = cards.where((c) => !c.rank.startsWith('Joker'));
+    if (nonJokers.isNotEmpty && nonJokers.every((c) => c.rank == '2')) {
+      // Dann nehmen wir '2' als eigentliches Ziel-Ranking.
+      return '2';
+    }
+
     final normalCards = cards.where((c) => !_isGroupWildcard(c, null)).toList();
     if (normalCards.isEmpty) {
       return cards.every((c) => c.rank == '2') ? '2' : null;
@@ -65,7 +71,7 @@ class StandardRuleSet extends RuleSet {
     return false;
   }
 
-  /// Testet alle Kombinationsmöglichkeiten, welche '2' als normal verwendet werden.
+  // Testet alle Kombinationsmöglichkeiten, welche '2' als normal verwendet werden.
   bool _any2ArrangementYieldsSequence(List<CardEntity> cards) {
     final indices = <int>[];
     for (int i=0; i<cards.length; i++) {
@@ -85,7 +91,7 @@ class StandardRuleSet extends RuleSet {
     return false;
   }
 
-  /// Prüft die Karten in *gegebener Reihenfolge*, ob eine lückenlose Sequenz entsteht.
+  // Prüft die Karten in *gegebener Reihenfolge*, ob eine lückenlose Sequenz entsteht.
   bool _checkSequenceArrangement(List<CardEntity> cards, List<int> normal2Indices) {
     // Anzug prüfen
     if (!_checkSuitOfNormals(cards, normal2Indices)) return false;
@@ -146,7 +152,7 @@ class StandardRuleSet extends RuleSet {
     return count;
   }
 
-  /// Hier prüfen wir die Farbe nur der als normal angesehenen Karten.
+  // Hier prüfen wir die Farbe nur der als normal angesehenen Karten.
   bool _checkSuitOfNormals(List<CardEntity> cards, List<int> normal2Indices) {
     final normalCards = <CardEntity>[];
     for (int i=0; i<cards.length; i++) {
@@ -160,7 +166,7 @@ class StandardRuleSet extends RuleSet {
     return normalCards.every((c) => c.suit==s);
   }
 
-  /// Prüft nur, ob '2' in passender Farbe mitspielen könnte (sonst wird sie Wildcard).
+  // Prüft nur, ob '2' in passender Farbe mitspielen könnte (sonst wird sie Wildcard).
   bool _formsValidSequenceWith2AsNormal(List<CardEntity> testCards, CardEntity the2) {
     final s = _getSequenceSuitIf2IsNormal(testCards, the2);
     return s!=null;
@@ -186,6 +192,68 @@ class StandardRuleSet extends RuleSet {
 
   @override
   bool validateRoundCondition(List<List<CardEntity>> cards, int roundNumber) {
-    return true;
+    switch (roundNumber) {
+      case 1:
+        // Check for at least two sets of three
+        int setsOfThree = 0;
+        for (final move in cards) {
+          if (move.length >= 3 && _isValidGroup(move)) {
+            setsOfThree++;
+          }
+        }
+        return setsOfThree >= 2;
+      case 2:
+        // Check for at least one set of four
+        for (final move in cards) {
+          if (move.length >= 4 && _isValidGroup(move)) {
+            return true;
+          }
+        }
+        return false;
+      case 3:
+        // Check for at least two sets of four
+         int setsOfFour = 0;
+        for (final move in cards) {
+          if (move.length >= 4 && _isValidGroup(move)) {
+            setsOfFour++;
+          }
+        }
+        return setsOfFour >= 2;
+      case 4:
+        // Check for at least one set of five
+        for (final move in cards) {
+          if (move.length >= 5 && _isValidGroup(move)) {
+            return true;
+          }
+        }
+        return false;
+      case 5:
+        // Check for at least two sets of five
+        int setsOfFive = 0;
+        for (final move in cards) {
+          if (move.length >= 5 && _isValidGroup(move)) {
+            setsOfFive++;
+          }
+        }
+        return setsOfFive >= 2;
+      case 6:
+        // Check for at least one set of six
+        for (final move in cards) {
+          if (move.length >= 6 && _isValidGroup(move)) {
+            return true;
+          }
+        }
+        return false;
+      case 7:
+        // Check for at least one sequence of seven
+        for (final move in cards) {
+          if (move.length >= 7 && _isValidSequence(move)) {
+            return true;
+          }
+        }
+        return false;
+      default:
+        return false;
+    }
   }
 }
