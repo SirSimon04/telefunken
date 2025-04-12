@@ -28,16 +28,18 @@ class GameLogic {
     required this.firestoreController,
   });
 
-  // Synchronisiere den Spielstatus mit Firestore
+  // ---------------------
+  // INITIAL SETUP
+  // ---------------------
   Future<void> syncWithFirestore() async {
     try {
       final gameSnapshot = await firestoreController.getGame(gameId);
       if (!gameSnapshot.exists) return;
+
       final gameData = gameSnapshot.data()!;
-
       ruleSet = RuleSet.fromName(gameData['rules']);
-
       maxPlayers = gameData['max_players'] ?? 0;
+
       final index = players.indexWhere((p) => p.id == gameData['currentPlayer']);
       if (index < 0) {
         currentPlayerIndex = index;
@@ -45,72 +47,85 @@ class GameLogic {
       roundNumber = gameData['roundNumber'] ?? 1;
 
       final playersData = await firestoreController.getPlayers(gameId);
+      players = playersData.map((pData) => Player.fromMap(pData)).toList();
 
-      players = playersData.map((playerData) {
-        final player = Player.fromMap(playerData);
-        return player;
-      }).toList();
-
-      // Load the deck
       final deckData = await firestoreController.getDeck(gameId);
-
-      if (deckData.isEmpty) {
-        return;
+      if (deckData.isNotEmpty) {
+        deck.cards
+          ..clear()
+          ..addAll(deckData.map((card) => CardEntity.fromMap(card as Map<String, dynamic>)));
       }
 
-      try {
-        deck.cards.clear();
-        deck.cards.addAll(deckData.map((card) => CardEntity.fromMap(card)));
-      } catch (e) {
-        print('Error processing deck data: $e');
-      }
-
-      // Load the table
-      table.clear();
       final tableData = gameData['table'] as List<dynamic>? ?? [];
-      try {
-        table.addAll(tableData.map((group) {
-          if (group is List<dynamic>) {
-            return group.map((card) => CardEntity.fromMap(card)).toList();
-          } else {
+      table
+        ..clear()
+        ..addAll(
+          tableData.map((group) {
+            if (group is List<dynamic>) {
+              return group.map((c) => CardEntity.fromMap(c)).toList();
+            }
             throw Exception('Invalid table group format');
-          }
-        }));
-      } catch (e) {
-        print('Error processing table data: $e');
-      }
+          }),
+        );
 
-      // Load the discard pile
-      discardPile.clear();
       final discardPileData = gameData['discardPile'] as List<dynamic>? ?? [];
-      try {
-        discardPile.addAll(discardPileData.map((card) => CardEntity.fromMap(card)));
-      } catch (e) {
-        print('Error processing discard pile data: $e');
-      }
+      discardPile
+        ..clear()
+        ..addAll(
+          discardPileData.map((card) => CardEntity.fromMap(card)),
+        );
     } catch (e) {
       print('Error syncing with Firestore: $e');
     }
   }
 
-  int getDeckLength() {
-    return deck.getLength();
-  }
+  // ---------------------
+  // TURN / ROUND MANAGEMENT
+  // ---------------------
+  int getDeckLength() => deck.getLength();
 
-  // Nächster Spieler und Synchronisation
   void nextTurn() async {
     currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
-
     hasDrawnCard = false;
 
     await firestoreController.updateGameState(gameId, {
       'currentPlayer': players[currentPlayerIndex].id,
       'discardPile': discardPile.map((card) => card.toMap()).toList(),
     });
+
+    players = (await firestoreController.getPlayers(gameId))
+        .map((pData) => Player.fromMap(pData))
+        .toList();
     await Future.delayed(const Duration(milliseconds: 200));
   }
 
-  // Karte ziehen
+  Future<void> nextRound() async {
+    final temp = players.removeAt(0);
+    players.add(temp);
+
+    for (var p in players) {
+      p.hand.clear();
+    }
+    table.clear();
+    discardPile.clear();
+
+    roundNumber++;
+    currentPlayerIndex = 0;
+    deck
+      ..reset()
+      ..shuffle();
+
+    await firestoreController.updateGameState(gameId, {
+      'roundNumber': roundNumber,
+      'deck': deck.cards.map((card) => card.toMap()).toList(),
+      'discardPile': [],
+      'table': [],
+    });
+  }
+
+  // ---------------------
+  // CARD ACTIONS
+  // ---------------------
   void drawCard(String source) async {
     if (hasDrawnCard) return;
 
@@ -118,8 +133,8 @@ class GameLogic {
     if (source == 'deck') {
       drawnCard = deck.dealOne();
     } else if (source == 'discardPile' && discardPile.isNotEmpty) {
-      if(players[currentPlayerIndex].getCoins() < 1) {
-        //show in breadcrumb that no coins are available
+      if (players[currentPlayerIndex].getCoins() < 1) {
+        // Not enough coins
         return;
       }
       drawnCard = discardPile.removeLast();
@@ -137,7 +152,10 @@ class GameLogic {
         gameId,
         players[currentPlayerIndex].id,
         {
-          'hand': players[currentPlayerIndex].hand.map((card) => card.toMap()).toList(),
+          'hand': players[currentPlayerIndex]
+              .hand
+              .map((card) => card.toMap())
+              .toList(),
           'coins': players[currentPlayerIndex].getCoins(),
         },
       );
@@ -156,40 +174,9 @@ class GameLogic {
     }
   }
 
-  void nextRound() async {
-    Player temp = players[0];
-    players.removeAt(0);
-    players.add(temp);
-
-    for (var player in players) {
-      player.hand.clear();
-    }
-    // Reset the table and discard pile
-    table.clear();
-    discardPile.clear();
-    // Reset the round number and deal new cards
-    roundNumber++;
-    currentPlayerIndex = 0;
-    deck.reset();
-    deck.shuffle();
-
-    await firestoreController.updateGameState(gameId, {
-      'roundNumber': roundNumber,
-      'deck': deck.cards.map((card) => card.toMap()).toList(),
-      'discardPile': [],
-      'table': [],
-    });
-  }
-
-  bool isPaused(){
-    return paused;
-  }
-
-  bool isPlayersTurn(String playerId){
-    return players[currentPlayerIndex].id == playerId;
-  }
-
-  // Validierung von Zügen
+  // ---------------------
+  // MOVE VALIDATION
+  // ---------------------
   bool validateMove(List<CardEntity> cards) {
     if (!hasDrawnCard) return false;
 
@@ -197,49 +184,61 @@ class GameLogic {
       currentMoves.add(cards);
       print("Valid move: $cards");
       return true;
-    } else {
-      print("Invalid move: $cards");
-      return false;
     }
+    print("Invalid move: $cards");
+    return false;
   }
 
-  // Validierung von Ablagen
   Future<bool> validateDiscard(CardEntity card) async {
     if (!hasDrawnCard) return false;
 
     if (currentMoves.isEmpty) {
-      if (ruleSet.validateDiscard(card)) {
-        discardPile.add(card);
-        players[currentPlayerIndex].removeCardFromHand(card);
+      if (!ruleSet.validateDiscard(card)) return false;
 
-        await firestoreController.updateGameState(gameId, {
-          'discardPile': discardPile.map((card) => card.toMap()).toList(),
-        });
-
-        checkForWin();
-        nextTurn();
-        return true;
-      }
+      discardPile.add(card);
+      players[currentPlayerIndex].removeCardFromHand(card);
+      firestoreController.updatePlayer(
+        gameId,
+        players[currentPlayerIndex].id,
+        {
+          'hand': players[currentPlayerIndex]
+              .hand
+              .map((card) => card.toMap())
+              .toList(),
+        },
+      );
+      await _updateDiscardPile();
+      checkForWin();
+      nextTurn();
+      return true;
     } else {
-      if (players[currentPlayerIndex].isOut || ruleSet.validateRoundCondition(currentMoves, roundNumber)) {
-        discardPile.add(card);
-        players[currentPlayerIndex].removeCardFromHand(card);
-        addCurrentMovesToTable();
-        removeCurrentMovesFromPlayersHand();
-        players[currentPlayerIndex].isOut = true;
+      final canDiscard =
+          players[currentPlayerIndex].isOut() ||
+          ruleSet.validateRoundCondition(currentMoves, roundNumber);
 
-        await firestoreController.updateGameState(gameId, {
-          'discardPile': discardPile.map((card) => card.toMap()).toList(),
-        });
+      if (!canDiscard) return false;
 
-        checkForWin();
-        nextTurn();
-        return true;
-      } else {
-        return false;
-      }
+      discardPile.add(card);
+      players[currentPlayerIndex].removeCardFromHand(card);
+      addCurrentMovesToTable();
+      removeCurrentMovesFromPlayersHand();
+      players[currentPlayerIndex].setOut();
+      firestoreController.updatePlayer(
+        gameId,
+        players[currentPlayerIndex].id,
+        {
+          'hand': players[currentPlayerIndex]
+              .hand
+              .map((card) => card.toMap())
+              .toList(),
+          'isOut': players[currentPlayerIndex].isOut(),
+        },
+      );
+      await _updateDiscardPile();
+      checkForWin();
+      nextTurn();
+      return true;
     }
-    return false;
   }
 
   void addCurrentMovesToTable() async {
@@ -247,31 +246,35 @@ class GameLogic {
       table.add(move);
     }
     final tableMap = {
-      for (int i = 0; i < table.length; i++) i.toString(): table[i].map((card) => card.toMap()).toList(),
+      for (int i = 0; i < table.length; i++)
+        i.toString(): table[i].map((card) => card.toMap()).toList(),
     };
-    
-    await firestoreController.updateGameState(gameId, {
-      'table': tableMap,
-    });
+    await firestoreController.updateGameState(gameId, {'table': tableMap});
   }
 
-  // Überprüfe, ob ein Spieler gewonnen hat
+  // ---------------------
+  // WIN CHECK & SCORING
+  // ---------------------
   Future<bool> checkForWin() async {
-    if (players[currentPlayerIndex].hand.isEmpty) {
-      paused = true;
-      calculatePoints();
-      Player winningPlayer = getWinnigPlayer();
+    if (players[currentPlayerIndex].hand.isNotEmpty) return false;
+
+    calculatePoints();
+    if (roundNumber == 7) {
+      final winner = getWinnigPlayer();
       await firestoreController.updateGameState(gameId, {
-        'winner': winningPlayer.name,
+        'winner': winner.name,
         'isGameOver': true,
       });
       return true;
+    } else {
+      print("NextRound");
+      await nextRound();
+      return false;
     }
-    return false;
   }
 
-  // Punkte berechnen
-  void calculatePoints() {
+  void calculatePoints() async {
+    final playerScores = <String, int>{};
     for (var player in players) {
       int points = 0;
       for (var card in player.hand) {
@@ -287,114 +290,115 @@ class GameLogic {
           points += 10;
         }
       }
-      player.points = points;
+      player.addPoints(points);
+      playerScores[player.id] = player.getCoins();
+      await firestoreController.updatePlayer(gameId, player.id, {
+        'points': player.points,
+      });
     }
+    print("Player Scores: $playerScores");
+    await firestoreController.updateRoundScores(gameId, roundNumber, playerScores);
   }
 
-  Player getWinnigPlayer(){
-    Player winningPlayer = players[0];
-    for (var player in players) {
-      if(player.points < winningPlayer.points){
-        winningPlayer = player;
-      }
+  Player getWinnigPlayer() {
+    var winner = players[0];
+    for (var p in players) {
+      if (p.points < winner.points) winner = p;
     }
-    return winningPlayer;
+    return winner;
   }
 
-  removeCurrentMovesFromPlayersHand() async {
+  // ---------------------
+  // HELPERS
+  // ---------------------
+  Future<void> _updateDiscardPile() async {
+    await firestoreController.updateGameState(gameId, {
+      'discardPile': discardPile.map((c) => c.toMap()).toList(),
+    });
+  }
+
+  void removeCurrentMovesFromPlayersHand() async {
     for (var move in currentMoves) {
       players[currentPlayerIndex].removeCardsFromHand(move);
     }
     currentMoves.clear();
-
     await firestoreController.updatePlayer(
       gameId,
       players[currentPlayerIndex].id,
-      {
-        'hand': players[currentPlayerIndex].hand.map((card) => card.toMap()).toList(),
-      }
+      {'hand': players[currentPlayerIndex].hand.map((c) => c.toMap()).toList()},
     );
   }
 
+  // ---------------------
+  // LISTENERS
+  // ---------------------
   void listenToGameState() {
     firestoreController.listenToGameState(gameId).listen((snapshot) {
-      if (snapshot.exists) {
-        final data = snapshot.data()!;
-        
-        // Aktualisiere den aktuellen Spieler
-        currentPlayerIndex = players.indexWhere((p) => p.id == data['currentPlayer']);
+      if (!snapshot.exists) return;
+      final data = snapshot.data()!;
 
-        // Aktualisiere das Table
-        final tableData = data['table'];
-        table.clear();
-        if (tableData is Map<String, dynamic>) {
-          table.addAll(tableData.values.map((group) {
-            if (group is List<dynamic>) {
-              return group.map((card) => CardEntity.fromMap(card)).toList();
-            } else {
-              throw Exception('Invalid table group format in Map');
-            }
-          }));
-        } else if (tableData is List<dynamic>) {
-          table.addAll(tableData.map((group) {
-            if (group is List<dynamic>) {
-              return group.map((card) => CardEntity.fromMap(card)).toList();
-            } else {
-              throw Exception('Invalid table group format in List');
-            }
-          }));
-        } else {
-          throw Exception('Invalid table data format');
-        }
-
-        // Aktualisiere die Discard Pile
-        discardPile.clear();
-        final discardPileData = data['discardPile'];
-        if (discardPileData is List<dynamic>) {
-          discardPile.addAll(discardPileData.map((card) => CardEntity.fromMap(card)));
-        } else {
-          throw Exception('Invalid discard pile data format');
-        }
-        
-        // NEU: Aktualisiere das Deck
-        final deckData = data['deck'];
-        if (deckData is List<dynamic>) {
-          try {
-            deck.cards.clear();
-            deck.cards.addAll(deckData.map((card) => CardEntity.fromMap(card)));
-          } catch (e) {
-            print('Error processing deck data in listener: $e');
-          }
-        } else {
-          throw Exception('Invalid deck data format');
-        }
-
-        // Aktualisiere Spiel-Flags
-        paused = data['isGamePaused'] ?? false;
-        gameOver = data['isGameOver'] ?? false;
+      // Spieler
+      final cpIndex = players.indexWhere((p) => p.id == data['currentPlayer']);
+      if (cpIndex >= 0) {
+        currentPlayerIndex = cpIndex;
       }
+
+      // Table
+      final tableData = data['table'];
+      table.clear();
+      if (tableData is Map<String, dynamic>) {
+        table.addAll(
+          tableData.values.map((group) {
+            if (group is List<dynamic>) {
+              return group.map((c) => CardEntity.fromMap(c)).toList();
+            }
+            throw Exception('Invalid table group format in Map');
+          }),
+        );
+      } else if (tableData is List<dynamic>) {
+        table.addAll(
+          tableData.map((group) {
+            if (group is List<dynamic>) {
+              return group.map((c) => CardEntity.fromMap(c)).toList();
+            }
+            throw Exception('Invalid table group format in List');
+          }),
+        );
+      }
+
+      // Discard Pile
+      discardPile.clear();
+      final discardData = data['discardPile'];
+      if (discardData is List<dynamic>) {
+        discardPile.addAll(discardData.map((card) => CardEntity.fromMap(card as Map<String, dynamic>)));
+      } else {
+        throw Exception('Invalid discard pile data format');
+      }
+
+      // Deck
+      final deckData = data['deck'];
+      if (deckData is List<dynamic>) {
+        try {
+          deck.cards
+            ..clear()
+            ..addAll(deckData.map((card) => CardEntity.fromMap(card as Map<String, dynamic>)));
+        } catch (e) {
+          print('Error processing deck data: $e');
+        }
+      }
+
+      paused = data['isGamePaused'] ?? false;
+      gameOver = data['isGameOver'] ?? false;
     });
   }
 
   void listenToPlayerUpdates() {
-      firestoreController.listenToPlayersUpdate(gameId).listen((playersData) {
-        players = playersData.map((playerData) => Player.fromMap(playerData)).toList();
-      });
-    }
-
-  bool isGameOver() {
-    return gameOver;
+    firestoreController.listenToPlayersUpdate(gameId).listen((playersData) {
+      players = playersData.map((p) => Player.fromMap(p)).toList();
+    });
   }
 
-
-  ///ToDo:
-  /// - Gerade ist es Random ob die Reiehnfolge der Spieler richtig angezeigt wird.
-
-  /// - Regelwerk überarbeiten
-  /// - Punktevergabe überarbeiten und Punktzahl neben dem Spieler anzeigen 
-  /// - Rundencounter in die Ecke hauen
-  /// - Buy Button für die Karten
-  /// - Am Spielende soll das Spielfeld 3 Sekunden lang stehen bleiben, dann navigiert man zu einer neuen Seite, wo eine Tabelle mit den Spieler und der Punkte und den bekommenen Punkten per Runde angezeigt wird.
-  /// - Karten an andere Karten anlegen können
-  /// - Bei den anlegenden Karten schauen ob man einen Joker ersetzen und benutzen kann
+  bool isPaused() => paused;
+  bool isPlayersTurn(String pid) => players[currentPlayerIndex].id == pid;
+  bool isGameOver() => gameOver;
 }
