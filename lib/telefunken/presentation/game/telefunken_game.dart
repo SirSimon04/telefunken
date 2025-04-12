@@ -283,7 +283,6 @@ class TelefunkenGame extends FlameGame with TapDetector {
   }
 
   void updatePlayersText() async {
-    print("Update Players Text");
     // Entferne alte Spielernamen-Texte
     children.whereType<LabeledTextComponent>().forEach((component) {
       if (component.label == 'playerName') {
@@ -521,5 +520,87 @@ class TelefunkenGame extends FlameGame with TapDetector {
       }
     ));
     await Future.delayed(const Duration(milliseconds: 100));
+  }
+
+
+  void attemptAppendToTable(List<CardComponent> selectedCards) async { // 1) Check if the current player has satisfied the round requirement (isOut). 
+    if (!gameLogic!.players[playerIndex].isOut()) { // If not out, no appending allowed: 
+      print("Anlegen ist nicht erlaubt, da Spieler nicht aus ist!"); 
+      return;
+    }
+    // 2) Compute the bounding-box for the set of dragged/selected cards.
+  //    This helps us detect collisions with existing table groups.
+  final selectedArea = selectedCards.fold<Rect>(
+    selectedCards.first.toRect(),
+    (previous, card) => previous.expandToInclude(card.toRect()),
+  );
+
+  bool validAppendFound = false;
+
+  // 3) Loop over all groups already on the table.
+  for (int groupIndex = 0; groupIndex < gameLogic!.table.length; groupIndex++) {
+    List<CardEntity> tableGroup = gameLogic!.table[groupIndex];
+
+    // For collision detection, we look for a “LabeledSpriteComponent” whose
+    // label matches the group index (like 'tableGroup_0', 'tableGroup_1', etc.).
+    final groupComponent = children.firstWhere(
+      (c) => c is LabeledSpriteComponent && (c).label == 'tableGroup_$groupIndex',
+    );
+
+    // If we can’t find a matching group component, continue to next group.
+    if (groupComponent == null) continue;
+
+    // 4) Check if the bounding-box for the selected cards overlaps
+    //    the bounding-box of the existing group on the table.
+    if (groupComponent is PositionComponent && groupComponent.toRect().overlaps(selectedArea)) {
+      // Combine the table’s existing group with the currently selected cards.
+      List<CardEntity> combined = List.from(tableGroup);
+      for (var comp in selectedCards) {
+        combined.add(comp.card);
+      }
+
+      // 5) Ask our game logic if the combined set is a valid group
+      //    (for example, that all suits/ranks match the rules).
+      if (gameLogic!.validateMove(combined)) {
+        validAppendFound = true;
+
+        // 6) Update the table group in local state:
+        gameLogic!.table[groupIndex] = combined;
+
+        // Remove the appended cards from the player’s hand
+        // (both locally and in Firestore).
+        gameLogic!.players[playerIndex].removeCardsFromHand(
+          selectedCards.map((comp) => comp.card).toList(),
+        );
+
+        // 7) Update the player’s hand in Firestore
+        await firestoreController.updatePlayer(
+          gameId,
+          gameLogic!.players[playerIndex].id,
+          {
+            'hand': gameLogic!.players[playerIndex].hand.map((c) => c.toMap()).toList(),
+          },
+        );
+
+        // 8) Also update the table in Firestore (so that every client sees it).
+        final tableMap = {
+          for (int i = 0; i < gameLogic!.table.length; i++)
+            i.toString(): gameLogic!.table[i].map((c) => c.toMap()).toList()
+        };
+        await firestoreController.updateGameState(gameId, {'table': tableMap});
+
+        // Because we successfully updated one group, we stop.
+        break;
+      }
+    }
+  }
+
+  // 9) If we never found a valid group to attach to, log an error or do an animation.
+  if (!validAppendFound) {
+    print("Anlegen fehlgeschlagen: Die Kombination ist ungültig oder keine geeignete Tischgruppe gefunden.");
+  } else {
+    // 10) Otherwise, refresh the UI if successful.
+    updateUI();
+  }
   }
 }
