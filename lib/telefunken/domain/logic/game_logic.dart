@@ -177,15 +177,19 @@ class GameLogic {
   // ---------------------
   // MOVE VALIDATION
   // ---------------------
-  bool validateMove(List<CardEntity> cards) {
+
+  //add an optional parameter to the validateMove function
+  // to allow for a specific player to be passed in
+  bool validateMove(List<CardEntity> cards, {bool? addToMoves}) {
     if (!hasDrawnCard) return false;
 
     if (ruleSet.validateMove(cards)) {
-      currentMoves.add(cards);
-      print("Valid move: $cards");
+      if(addToMoves == false){}
+      else{
+        currentMoves.add(cards);
+      }
       return true;
     }
-    print("Invalid move: $cards");
     return false;
   }
 
