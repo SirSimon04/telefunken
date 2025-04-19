@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flame/game.dart';
 import 'package:telefunken/telefunken/presentation/screens/home/components/menu_buttons.dart';
+import 'package:telefunken/telefunken/presentation/screens/next_round_screen.dart';
 import 'telefunken/presentation/screens/home/home_screen.dart';
 import 'telefunken/presentation/screens/settings_screen.dart';
 import 'telefunken/presentation/screens/join_game_screen.dart';
@@ -36,7 +37,23 @@ class MyApp extends StatelessWidget {
       routes: {
         '/': (context) => Stack(
         children: [
-          GameWidget(game: HomeScreen()),   // 🔹 Das Spiel
+          GameWidget(
+            game: HomeScreen(),
+            // 1) Add overlayBuilderMap for the NextRoundScreen
+            overlayBuilderMap: {
+              'NextRoundOverlay': (BuildContext context, Game game) {
+                // 2) Cast the game to your HomeScreen or TelefunkenGame
+                //    so you can reference game-state if needed
+                // final homeGame = game as HomeScreen;
+
+                return NextRoundScreen(
+                  playerNames: const [],
+                  roundScores: const [],
+                  totalScores: const [],
+                );
+              },
+            },
+          ),
           Positioned(
             bottom: 100,
             left: 0,
@@ -45,7 +62,6 @@ class MyApp extends StatelessWidget {
           ),
         ],
       ),
-        //gameRoute: (context) => GameScreen(),
         settingsRoute: (context) => SettingsScreen(),
         joinRoute: (context) => JoinGameScreen(),
         hostRoute: (context) => HostGameScreen(),
