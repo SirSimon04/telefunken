@@ -1,6 +1,7 @@
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:telefunken/telefunken/presentation/game/telefunken_game.dart';
+import 'package:telefunken/telefunken/presentation/screens/next_round_screen.dart';
 import 'package:telefunken/telefunken/service/firestore_controller.dart';
 import 'base_screen.dart';
 import 'dart:async';
@@ -80,6 +81,18 @@ class _HostGameScreenState extends State<HostGameScreen> {
           playerId: playerId,
           playerName: playerName,
           firestoreController: firestoreController,
+          onNextRound: (playerNames, roundScores, totalScores) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => NextRoundScreen(
+                  playerNames: playerNames,
+                  roundScores: roundScores,
+                  totalScores: totalScores,
+                ),
+              ),
+            );
+          },
         );
 
         Navigator.push(

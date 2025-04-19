@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:telefunken/telefunken/domain/entities/card_entity.dart';
 import 'package:telefunken/telefunken/service/firestore_controller.dart';
 
@@ -22,6 +23,7 @@ class GameLogic {
   late bool paused = false;
   late bool gameOver = false;
   late bool hasDrawnCard = false;
+  VoidCallback? onNextRoundStarted;
 
   GameLogic({
     required this.gameId,
@@ -53,7 +55,7 @@ class GameLogic {
       if (deckData.isNotEmpty) {
         deck.cards
           ..clear()
-          ..addAll(deckData.map((card) => CardEntity.fromMap(card as Map<String, dynamic>)));
+          ..addAll(deckData.map((card) => CardEntity.fromMap(card)));
       }
 
       final tableData = gameData['table'] as List<dynamic>? ?? [];
@@ -83,6 +85,8 @@ class GameLogic {
   // TURN / ROUND MANAGEMENT
   // ---------------------
   int getDeckLength() => deck.getLength();
+
+  int getRoundNumber() => roundNumber;
 
   void nextTurn() async {
     currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
@@ -121,6 +125,7 @@ class GameLogic {
       'discardPile': [],
       'table': [],
     });
+    onNextRoundStarted?.call();
   }
 
   // ---------------------
@@ -180,9 +185,8 @@ class GameLogic {
 
   //add an optional parameter to the validateMove function
   // to allow for a specific player to be passed in
-  bool validateMove(List<CardEntity> cards, {bool? addToMoves}) {
+  bool validateMove(List<CardEntity> cards, [bool addToMoves = true]) {
     if (!hasDrawnCard) return false;
-
     if (ruleSet.validateMove(cards)) {
       if(addToMoves == false){}
       else{
@@ -256,6 +260,18 @@ class GameLogic {
     await firestoreController.updateGameState(gameId, {'table': tableMap});
   }
 
+  bool removeGroupFromCurrentMoves(List<CardEntity> group) {
+    // Suche exakte Übereinstimmung in currentMoves
+    final index = currentMoves.indexWhere((g) =>
+        g.length == group.length &&
+        g.every((card) => group.contains(card)));
+
+    if (index != -1) {
+      currentMoves.removeAt(index);
+      return true;
+    }
+    return false;
+}
   // ---------------------
   // WIN CHECK & SCORING
   // ---------------------
