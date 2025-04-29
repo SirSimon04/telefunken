@@ -12,6 +12,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 
 import 'config/firebase_options.dart';
+import 'config/navigator_key.dart';
 
 void main() async{
   WidgetsFlutterBinding.ensureInitialized();
@@ -32,6 +33,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey,
       title: 'Telefunken',
       initialRoute: homeRoute,
       routes: {
@@ -39,20 +41,6 @@ class MyApp extends StatelessWidget {
         children: [
           GameWidget(
             game: HomeScreen(),
-            // 1) Add overlayBuilderMap for the NextRoundScreen
-            overlayBuilderMap: {
-              'NextRoundOverlay': (BuildContext context, Game game) {
-                // 2) Cast the game to your HomeScreen or TelefunkenGame
-                //    so you can reference game-state if needed
-                // final homeGame = game as HomeScreen;
-
-                return NextRoundScreen(
-                  playerNames: const [],
-                  roundScores: const [],
-                  totalScores: const [],
-                );
-              },
-            },
           ),
           Positioned(
             bottom: 100,

@@ -1,4 +1,6 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:telefunken/config/navigator_key.dart';
 import 'package:telefunken/telefunken/domain/entities/card_entity.dart';
 import 'package:telefunken/telefunken/service/firestore_controller.dart';
 
@@ -42,14 +44,17 @@ class GameLogic {
       ruleSet = RuleSet.fromName(gameData['rules']);
       maxPlayers = gameData['max_players'] ?? 0;
 
-      final index = players.indexWhere((p) => p.id == gameData['currentPlayer']);
-      if (index < 0) {
-        currentPlayerIndex = index;
-      }
       roundNumber = gameData['roundNumber'] ?? 1;
 
       final playersData = await firestoreController.getPlayers(gameId);
       players = playersData.map((pData) => Player.fromMap(pData)).toList();
+
+      final index = players.indexWhere((p) => p.id == gameData['currentPlayer']);
+      if (index >= 0) {
+        currentPlayerIndex = index;
+      }
+
+      hasDrawnCard = players[currentPlayerIndex].hasDrawed();
 
       final deckData = await firestoreController.getDeck(gameId);
       if (deckData.isNotEmpty) {
@@ -89,17 +94,24 @@ class GameLogic {
   int getRoundNumber() => roundNumber;
 
   void nextTurn() async {
-    currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
     hasDrawnCard = false;
+    await firestoreController.updatePlayer(
+      gameId,
+      players[currentPlayerIndex].id,
+      {
+        'hasDrawn': false,
+        'isOut': players[currentPlayerIndex].isOut(),
+      },
+    );
+
+    currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+
 
     await firestoreController.updateGameState(gameId, {
       'currentPlayer': players[currentPlayerIndex].id,
       'discardPile': discardPile.map((card) => card.toMap()).toList(),
     });
 
-    players = (await firestoreController.getPlayers(gameId))
-        .map((pData) => Player.fromMap(pData))
-        .toList();
     await Future.delayed(const Duration(milliseconds: 200));
   }
 
@@ -125,8 +137,26 @@ class GameLogic {
       'discardPile': [],
       'table': [],
     });
-    onNextRoundStarted?.call();
+
+    showDialog(
+      context: navigatorKey.currentContext!,
+      barrierDismissible: false,
+      builder: (context) {
+        // Dialog nach 10 Sekunden automatisch schließen
+        Future.delayed(Duration(seconds: 10), () {
+          if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop();
+          }
+        });
+
+        return AlertDialog(
+          title: Text('Hinweis'),
+          content: Text('Dieses Popup schließt sich nach 10 Sekunden automatisch.'),
+        );
+      },
+    );  
   }
+
 
   // ---------------------
   // CARD ACTIONS
@@ -406,6 +436,11 @@ class GameLogic {
           print('Error processing deck data: $e');
         }
       }
+
+      if(data['roundNumber'] != roundNumber) {
+        nextRound();
+      }
+      roundNumber = data['roundNumber'] ?? roundNumber;
 
       paused = data['isGamePaused'] ?? false;
       gameOver = data['isGameOver'] ?? false;

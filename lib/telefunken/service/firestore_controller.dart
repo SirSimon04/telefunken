@@ -57,6 +57,8 @@ class FirestoreController {
       final deck = Deck();
       deck.shuffle();
 
+      players[0].setDrawed(true);
+
       int playerIndex = 0;
       int cardsToDeal = players.length * 11 + 1;
       for (int i = 0; i < cardsToDeal; i++) {
