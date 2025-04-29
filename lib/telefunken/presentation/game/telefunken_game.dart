@@ -259,7 +259,8 @@ class TelefunkenGame extends FlameGame with TapDetector {
     double currentX = tableZone.left;
     double currentY = tableZone.top;
 
-    for (var group in gameLogic!.table) {
+    for (int groupIndex = 0; groupIndex < gameLogic!.table.length; groupIndex++) { // Get group index
+      var group = gameLogic!.table[groupIndex];
       final groupWidth = group.length * (cardWidth + cardSpacing) - cardSpacing;
 
       if (currentX + groupWidth > tableZone.right) {
@@ -270,7 +271,8 @@ class TelefunkenGame extends FlameGame with TapDetector {
       for (int i = 0; i < group.length; i++) {
         final card = group[i];
         final position = Vector2(currentX + i * (cardWidth + cardSpacing), currentY);
-        add(LabeledSpriteComponent(label: 'tableGroup_$i')
+        // Use groupIndex in the label
+        add(LabeledSpriteComponent(label: 'tableGroup_$groupIndex')
           ..sprite = Sprite(await images.load('cards/${card.suit}${card.rank}.png'))
           ..position = position
           ..size = Vector2(cardWidth, cardHeight)
@@ -415,15 +417,26 @@ class TelefunkenGame extends FlameGame with TapDetector {
 
       for (int groupIndex = 0; groupIndex < gameLogic!.table.length && !validAppendFound; groupIndex++) {
         List<CardEntity> tableGroup = gameLogic!.table[groupIndex];
-        final groupComponent = children.firstWhereOrNull(
-          (c) => c is LabeledSpriteComponent && (c).label == 'tableGroup_$groupIndex',
-        ) as LabeledSpriteComponent?;
+        // Find ALL components for this group index
+        final tableGroupComponents = children.whereType<LabeledSpriteComponent>()
+                                        .where((c) => c.label == 'tableGroup_$groupIndex')
+                                        .toList();
 
         print("Collision check with group $groupIndex");
 
-        if (groupComponent == null) continue;
+        if (tableGroupComponents.isEmpty) continue; // Skip if no components found for this group
 
-        if (groupComponent.toRect().overlaps(selectedArea)) {
+        // Calculate the combined Rect for the entire group on the table
+        Rect tableGroupArea = tableGroupComponents.first.toRect();
+        for (int i = 1; i < tableGroupComponents.length; i++) {
+          tableGroupArea = tableGroupArea.expandToInclude(tableGroupComponents[i].toRect());
+        }
+
+        print("Calculated table group area: $tableGroupArea");
+        print("Selected cards area: $selectedArea");
+
+        // Use the combined area for overlap check
+        if (tableGroupArea.overlaps(selectedArea)) {
           List<CardEntity> combined = List.from(tableGroup);
           for (var comp in group) {
             combined.add(comp.card);
