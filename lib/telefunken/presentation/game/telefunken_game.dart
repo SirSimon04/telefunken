@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:flame/collisions.dart';
 import 'package:flame/effects.dart';
 import 'package:flame/events.dart';
 import 'package:flame/game.dart';
@@ -161,6 +162,25 @@ class TelefunkenGame extends FlameGame with TapDetector {
       ..anchor = Anchor.center;
     add(card);
     card.priority = 10;
+
+    // Randomly determine if the card should spin
+    final shouldSpin = Random().nextBool();
+    
+    if (shouldSpin) {
+      // Add a rotation effect with a random angle
+      final randomAngle = Random().nextDouble() * pi * 2; // Random angle between 0 and 360 degrees
+      card.add(
+        RotateEffect.by(
+          randomAngle,
+          EffectController(
+            duration: 1.0,
+            curve: Curves.easeInOut,
+          ),
+        ),
+      );
+    }
+
+    // Add the move effect
     card.add(MoveEffect.to(
       endPos,
       EffectController(duration: 1.0, curve: Curves.easeInOut),
@@ -434,7 +454,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
             await firestoreController.updateGameState(gameId, {'table': tableMap});
 
             break; // stop after a valid append
-          }else{
+          } else {
             print("Invalid append found with group $groupIndex and cards: ${combined.map((c) => c.toString())}");
             resetGroupToOriginalPosition(group);
             break; // stop after an invalid append
@@ -444,7 +464,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
     } else {
       print("not out yet");
     }
-
+    
     // If only one card was dropped, check if it was placed on discard zone
     if (group.length == 1) {
       final card = group.first;

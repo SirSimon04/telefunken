@@ -4,7 +4,8 @@ import 'package:flame/collisions.dart';
 import 'package:telefunken/telefunken/domain/entities/card_entity.dart';
 import 'package:telefunken/telefunken/domain/logic/game_logic.dart';
 
-class CardComponent extends SpriteComponent with TapCallbacks, DragCallbacks, CollisionCallbacks {
+class CardComponent extends SpriteComponent
+    with TapCallbacks, DragCallbacks, CollisionCallbacks {
   final CardEntity card;
   String? ownerId;
   final GameLogic gameLogic;
@@ -35,7 +36,13 @@ class CardComponent extends SpriteComponent with TapCallbacks, DragCallbacks, Co
     size = Vector2(50, 75);
     anchor = Anchor.topLeft;
     originalPosition = position.clone();
-    add(RectangleHitbox());
+
+    // Entferne vorhandene Hitboxen, falls vorhanden
+    children.whereType<ShapeHitbox>().forEach(remove);
+    // Füge eine neue Rechteck-Hitbox hinzu
+    add(RectangleHitbox()
+      ..collisionType = CollisionType.active
+      ..renderShape = false);
   }
 
   @override
@@ -92,7 +99,7 @@ class CardComponent extends SpriteComponent with TapCallbacks, DragCallbacks, Co
     }
     lastPointerPosition = event.localPosition;
 
-     arrangeSelectedCardsAroundDraggedCard(this);
+    arrangeSelectedCardsAroundDraggedCard(this);
   }
 
   @override
@@ -116,7 +123,7 @@ class CardComponent extends SpriteComponent with TapCallbacks, DragCallbacks, Co
   void arrangeSelectedCardsAroundDraggedCard(CardComponent draggedCard) {
     final spacing = draggedCard.size.x * 0.1;
     final selected = List<CardComponent>.from(selectedCards);
-    
+
     selected.sort((a, b) => a.position.x.compareTo(b.position.x));
 
     final indexOfDragged = selected.indexOf(draggedCard);
@@ -129,12 +136,10 @@ class CardComponent extends SpriteComponent with TapCallbacks, DragCallbacks, Co
     }
   }
 
-  void setHighlighted(bool bool) {
-    isHighlighted = bool;
-    if (isHighlighted) {
-      position.add(Vector2(0, -10));
-    } else {
-      position.add(Vector2(0, 10));
-    }
+  void setHighlighted(bool value) {
+    if (isHighlighted == value) return;
+
+    isHighlighted = value;
+    position.add(Vector2(0, isHighlighted ? -10 : 10));
   }
 }
