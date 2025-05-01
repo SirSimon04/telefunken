@@ -81,18 +81,6 @@ class _HostGameScreenState extends State<HostGameScreen> {
           playerId: playerId,
           playerName: playerName,
           firestoreController: firestoreController,
-          onNextRound: (playerNames, roundScores, totalScores) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => NextRoundScreen(
-                  playerNames: playerNames,
-                  roundScores: roundScores,
-                  totalScores: totalScores,
-                ),
-              ),
-            );
-          },
         );
 
         Navigator.push(

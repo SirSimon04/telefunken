@@ -83,7 +83,7 @@ class Player {
   }
 
   void addPoints(int points){
-    points += points;
+    this.points += points;
   }
 
   void setDrawed(bool drawed) {
