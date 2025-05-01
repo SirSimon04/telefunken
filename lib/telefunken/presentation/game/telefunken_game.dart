@@ -107,9 +107,6 @@ class TelefunkenGame extends FlameGame with TapDetector {
     );
 
     await gameLogic!.syncWithFirestore();
-    gameLogic!.onNextRoundStarted = () {
-      onNextRound?.call(['Alice','Bob'], [[5,10]], [15,20]);
-    };
     gameLogic!.listenToGameState();
     gameLogic!.listenToPlayerUpdates();
 

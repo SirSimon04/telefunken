@@ -115,48 +115,111 @@ class GameLogic {
     await Future.delayed(const Duration(milliseconds: 200));
   }
 
-  Future<void> nextRound() async {
+  Future<void> nextRound(String roundWinnerPlayerId) async {
+    // Find the player who won the round
+    final roundWinner = players.firstWhere(
+      (p) => p.id == roundWinnerPlayerId,
+      orElse: () => players[0], // Fallback, though should always find the player
+    );
+
+    // --- Existing next round logic ---
     final temp = players.removeAt(0);
     players.add(temp);
 
     for (var p in players) {
       p.hand.clear();
+      // Reset other round-specific player states if necessary
     }
     table.clear();
     discardPile.clear();
 
     roundNumber++;
-    currentPlayerIndex = 0;
+    currentPlayerIndex = (roundNumber) % players.length;
     deck
       ..reset()
       ..shuffle();
+
+    // Deal new hands (Assuming dealing logic happens here or is triggered elsewhere)
+    // Example: await dealCards(); // You might need a separate method for dealing
 
     await firestoreController.updateGameState(gameId, {
       'roundNumber': roundNumber,
       'deck': deck.cards.map((card) => card.toMap()).toList(),
       'discardPile': [],
       'table': [],
+      'currentPlayer': players[currentPlayerIndex].id, // Set the new current player
+      // Reset other game state fields for the new round if needed
     });
 
-    showDialog(
-      context: navigatorKey.currentContext!,
-      barrierDismissible: false,
-      builder: (context) {
-        // Dialog nach 10 Sekunden automatisch schließen
-        Future.delayed(Duration(seconds: 10), () {
-          if (Navigator.of(context).canPop()) {
-            Navigator.of(context).pop();
-          }
-        });
+    // Update player states in Firestore (e.g., empty hand, reset isOut status)
+    for (var player in players) {
+       await firestoreController.updatePlayer(gameId, player.id, {
+         'hand': [],
+         'isOut': false,
+       });
+    }
 
-        return AlertDialog(
-          title: Text('Hinweis'),
-          content: Text('Dieses Popup schließt sich nach 10 Sekunden automatisch.'),
-        );
-      },
-    );  
+
+    // --- Updated Show Dialog ---
+    if (navigatorKey.currentContext != null) {
+      showDialog(
+        context: navigatorKey.currentContext!,
+        barrierDismissible: false, // Keep it non-dismissible until timer runs out
+        builder: (context) {
+          // Auto-close dialog after 10 seconds
+          Future.delayed(const Duration(seconds: 10), () {
+            if (Navigator.of(context, rootNavigator: true).canPop()) {
+               Navigator.of(context, rootNavigator: true).pop();
+            }
+          });
+
+          return AlertDialog(
+            title: Text('Round $roundNumber Starting!'),
+            content: SingleChildScrollView( // Use SingleChildScrollView if content might overflow
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${roundWinner.name} finished the last round!'),
+                  const SizedBox(height: 15),
+                  Text('Current Scores:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 5),
+                  DataTable(
+                    columnSpacing: 20, // Adjust spacing as needed
+                    columns: const [
+                      DataColumn(label: Text('Player')),
+                      DataColumn(label: Text('Points'), numeric: true),
+                    ],
+                    rows: players.map((player) {
+                      return DataRow(cells: [
+                        DataCell(Text(player.name)),
+                        DataCell(Text(player.getPoints().toString())),
+                      ]);
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+            actions: <Widget>[
+               TextButton(
+                 child: const Text('OK'),
+                 onPressed: () {
+                   if (Navigator.of(context).canPop()) {
+                     Navigator.of(context).pop();
+                   }
+                 },
+               ),
+             ],
+          );
+        },
+      );
+    } else {
+       print("Error: navigatorKey.currentContext is null. Cannot show dialog.");
+    }
+    //wait the 10 seconds
+    await Future.delayed(const Duration(seconds: 11));
+    onNextRoundStarted?.call(); // Notify UI if needed
   }
-
 
   // ---------------------
   // CARD ACTIONS
@@ -246,8 +309,7 @@ class GameLogic {
         },
       );
       await _updateDiscardPile();
-      checkForWin();
-      nextTurn();
+      if(!await checkForWin()) nextTurn();
       return true;
     } else {
       final canDiscard =
@@ -273,8 +335,7 @@ class GameLogic {
         },
       );
       await _updateDiscardPile();
-      checkForWin();
-      nextTurn();
+      if(!await checkForWin()) nextTurn();
       return true;
     }
   }
@@ -307,8 +368,10 @@ class GameLogic {
   // ---------------------
   Future<bool> checkForWin() async {
     if (players[currentPlayerIndex].hand.isNotEmpty) return false;
+    final roundWinnerId = players[currentPlayerIndex].id;
 
     calculatePoints();
+    await Future.delayed(const Duration(seconds: 2));
     if (roundNumber == 7) {
       final winner = getWinnigPlayer();
       await firestoreController.updateGameState(gameId, {
@@ -318,14 +381,21 @@ class GameLogic {
       return true;
     } else {
       print("NextRound");
-      await nextRound();
-      return false;
+      await nextRound(roundWinnerId);
+      return true;
     }
   }
 
   void calculatePoints() async {
-    final playerScores = <String, int>{};
+    final roundPenaltyPoints = <String, int>{}; // Renamed for clarity
     for (var player in players) {
+      // Skip the player who went out (they have 0 penalty points for the round)
+      if (player.id == players[currentPlayerIndex].id && player.hand.isEmpty) {
+         roundPenaltyPoints[player.id] = 0;
+         print("Skip player ${player.name} with 0 points");
+         continue;
+      }
+
       int points = 0;
       for (var card in player.hand) {
         if (card.rank == '2') {
@@ -336,18 +406,20 @@ class GameLogic {
           points += 50;
         } else if (['3', '4', '5', '6', '7'].contains(card.rank)) {
           points += 5;
-        } else {
+        } else { // 8, 9, 10, J, Q, K
           points += 10;
         }
       }
       player.addPoints(points);
-      playerScores[player.id] = player.getCoins();
+      roundPenaltyPoints[player.id] = points;
+
       await firestoreController.updatePlayer(gameId, player.id, {
         'points': player.points,
       });
     }
-    print("Player Scores: $playerScores");
-    await firestoreController.updateRoundScores(gameId, roundNumber, playerScores);
+    print("Round Penalty Points: $roundPenaltyPoints");
+    // Send the map of ROUND penalty points to Firestore
+    await firestoreController.updateRoundScores(gameId, roundNumber, roundPenaltyPoints);
   }
 
   Player getWinnigPlayer() {
@@ -438,7 +510,7 @@ class GameLogic {
       }
 
       if(data['roundNumber'] != roundNumber) {
-        nextRound();
+        nextRound(players[currentPlayerIndex].id);
       }
       roundNumber = data['roundNumber'] ?? roundNumber;
 
