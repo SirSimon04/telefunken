@@ -327,6 +327,8 @@ class TelefunkenGame extends FlameGame with TapDetector {
       }
     });
 
+    //wait one second
+    await Future.delayed(const Duration(microseconds: 200));
     for (var player in gameLogic!.players) {
       final playerPos = playerPositions[player.name] ?? Vector2.zero();
       var text = player.name == playerName
@@ -549,7 +551,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
   }
 
   void listenToPlayersUpdate() {
-    //updateUI();
+    //
   }
 
   void listenToDrawAnimationTrigger() {
