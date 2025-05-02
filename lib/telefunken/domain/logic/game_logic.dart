@@ -116,49 +116,21 @@ class GameLogic {
   }
 
   Future<void> nextRound(String roundWinnerPlayerId) async {
-    // Find the player who won the round
     final roundWinner = players.firstWhere(
       (p) => p.id == roundWinnerPlayerId,
       orElse: () => players[0], // Fallback, though should always find the player
     );
 
-    // --- Existing next round logic ---
     final temp = players.removeAt(0);
     players.add(temp);
 
     for (var p in players) {
       p.hand.clear();
-      // Reset other round-specific player states if necessary
     }
     table.clear();
     discardPile.clear();
 
-    roundNumber++;
-    currentPlayerIndex = (roundNumber) % players.length;
-    deck
-      ..reset()
-      ..shuffle();
-
-    // Deal new hands (Assuming dealing logic happens here or is triggered elsewhere)
-    // Example: await dealCards(); // You might need a separate method for dealing
-
-    await firestoreController.updateGameState(gameId, {
-      'roundNumber': roundNumber,
-      'deck': deck.cards.map((card) => card.toMap()).toList(),
-      'discardPile': [],
-      'table': [],
-      'currentPlayer': players[currentPlayerIndex].id, // Set the new current player
-      // Reset other game state fields for the new round if needed
-    });
-
-    // Update player states in Firestore (e.g., empty hand, reset isOut status)
-    for (var player in players) {
-       await firestoreController.updatePlayer(gameId, player.id, {
-         'hand': [],
-         'isOut': false,
-       });
-    }
-
+    currentPlayerIndex = 0;
 
     // --- Updated Show Dialog ---
     if (navigatorKey.currentContext != null) {
@@ -217,7 +189,8 @@ class GameLogic {
        print("Error: navigatorKey.currentContext is null. Cannot show dialog.");
     }
     //wait the 10 seconds
-    await Future.delayed(const Duration(seconds: 11));
+    await Future.delayed(const Duration(seconds: 15));
+    await firestoreController.distributeCards(gameId, players);
     onNextRoundStarted?.call(); // Notify UI if needed
   }
 
@@ -351,18 +324,23 @@ class GameLogic {
     await firestoreController.updateGameState(gameId, {'table': tableMap});
   }
 
-  bool removeGroupFromCurrentMoves(List<CardEntity> group) {
+  // Renamed from removeGroupFromCurrentMoves
+  bool removeMove(List<CardEntity> group) {
     // Suche exakte Übereinstimmung in currentMoves
+    // Using listEquals from package:collection for robust comparison
     final index = currentMoves.indexWhere((g) =>
-        g.length == group.length &&
-        g.every((card) => group.contains(card)));
+        listEquals(g.map((c) => c.toString()).toList()..sort(),
+                   group.map((c) => c.toString()).toList()..sort()));
 
     if (index != -1) {
+      print("Removing move from currentMoves: $group");
       currentMoves.removeAt(index);
       return true;
     }
+    print("Move not found in currentMoves to remove: $group");
     return false;
-}
+  }
+
   // ---------------------
   // WIN CHECK & SCORING
   // ---------------------
@@ -380,8 +358,11 @@ class GameLogic {
       });
       return true;
     } else {
-      print("NextRound");
-      await nextRound(roundWinnerId);
+      await firestoreController.updateGameState(gameId, {
+        'roundWinner': roundWinnerId,
+        'roundNumber': roundNumber++,
+        'isGameOver': false,
+      });
       return true;
     }
   }
@@ -510,7 +491,7 @@ class GameLogic {
       }
 
       if(data['roundNumber'] != roundNumber) {
-        nextRound(players[currentPlayerIndex].id);
+        //nextRound(players[currentPlayerIndex].id);
       }
       roundNumber = data['roundNumber'] ?? roundNumber;
 

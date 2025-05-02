@@ -1,32 +1,35 @@
-import 'package:flame/components.dart';
-import 'package:flame/events.dart';
 import 'package:flame/collisions.dart';
+import 'package:flame/components.dart';
+import 'package:flame/effects.dart';
+import 'package:flame/events.dart';
+import 'package:flutter/material.dart';
 import 'package:telefunken/telefunken/domain/entities/card_entity.dart';
 import 'package:telefunken/telefunken/domain/logic/game_logic.dart';
+import 'package:telefunken/telefunken/presentation/game/telefunken_game.dart';
 
-class CardComponent extends SpriteComponent
-    with TapCallbacks, DragCallbacks, CollisionCallbacks {
+class CardComponent extends SpriteComponent with TapCallbacks, DragCallbacks, CollisionCallbacks {
   final CardEntity card;
   String? ownerId;
   final GameLogic gameLogic;
-  final void Function(List<CardComponent>)? onCardsDropped;
-  final void Function(CardComponent)? onHighlightChanged;
-  bool isHighlighted = false;
+  final Function(List<CardComponent>)? onCardsDropped;
+  final Function(CardComponent)? onHighlightChanged;
+  final TelefunkenGame game;
+
   Vector2? originalPosition;
+  bool isHighlighted = false;
   Vector2? lastPointerPosition;
 
-  static Set<CardComponent> selectedCards = {};
+  static final List<CardComponent> selectedCards = [];
 
   CardComponent({
     required this.card,
-    required this.ownerId,
+    this.ownerId,
     required this.gameLogic,
     this.onCardsDropped,
     this.onHighlightChanged,
-    Sprite? sprite,
+    required this.game,
     Vector2? position,
-    Vector2? size,
-  }) : super(sprite: sprite, position: position, size: size);
+  }) : super(position: position);
 
   @override
   Future<void> onLoad() async {
@@ -37,9 +40,7 @@ class CardComponent extends SpriteComponent
     anchor = Anchor.topLeft;
     originalPosition = position.clone();
 
-    // Entferne vorhandene Hitboxen, falls vorhanden
     children.whereType<ShapeHitbox>().forEach(remove);
-    // Füge eine neue Rechteck-Hitbox hinzu
     add(RectangleHitbox()
       ..collisionType = CollisionType.active
       ..renderShape = false);
@@ -78,8 +79,29 @@ class CardComponent extends SpriteComponent
       return;
     }
 
-    if (selectedCards.isEmpty || !selectedCards.contains(this)) {
+    List<CardEntity>? moveContainingThisCard;
+    for (final move in gameLogic.currentMoves) {
+      if (move.any((c) => c.toString() == card.toString())) {
+        moveContainingThisCard = move;
+        break;
+      }
+    }
+
+    if (moveContainingThisCard != null) {
+      game.handleDragOnPlayedMove(moveContainingThisCard);
       return;
+    }
+
+    if (selectedCards.isEmpty || !selectedCards.contains(this)) {
+      if (isHighlighted) {
+        isHighlighted = false;
+        position.y += 10;
+      }
+      selectedCards.clear();
+      isHighlighted = true;
+      position.y -= 10;
+      selectedCards.add(this);
+      onHighlightChanged?.call(this);
     }
 
     super.onDragStart(event);
@@ -136,10 +158,13 @@ class CardComponent extends SpriteComponent
     }
   }
 
-  void setHighlighted(bool value) {
-    if (isHighlighted == value) return;
-
-    isHighlighted = value;
-    position.add(Vector2(0, isHighlighted ? -10 : 10));
+  void setHighlighted(bool highlight) {
+    if (isHighlighted != highlight) {
+      isHighlighted = highlight;
+      position.add(Vector2(0, isHighlighted ? -10 : 10));
+      if (!isHighlighted) {
+        selectedCards.remove(this);
+      }
+    }
   }
 }

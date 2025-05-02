@@ -52,44 +52,38 @@ class FirestoreController {
       }
 
       final players = playersData.map((data) => Player.fromMap(data)).toList();
-      players.shuffle();
+      await distributeCards(gameId, players);
+      // players.shuffle();
 
-      final deck = Deck();
-      deck.shuffle();
+      // final deck = Deck();
+      // deck.shuffle();
 
-      players[0].setDrawed(true);
+      // players[0].setDrawed(true);
 
-      int playerIndex = 0;
-      int cardsToDeal = players.length * 11 + 1;
-      for (int i = 0; i < cardsToDeal; i++) {
-        final card = deck.dealOne();
-        players[playerIndex].addCardToHand(card);
-        playerIndex = (playerIndex + 1) % players.length;
-      }
+      // int playerIndex = 0;
+      // int cardsToDeal = players.length * 11 + 1;
+      // for (int i = 0; i < cardsToDeal; i++) {
+      //   final card = deck.dealOne();
+      //   players[playerIndex].addCardToHand(card);
+      //   playerIndex = (playerIndex + 1) % players.length;
+      // }
 
-      const rankOrder = ['Joker' 'Joker1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
-      const suitOrder = ['C', 'D', 'H', 'S'];
-      for (var player in players) {
-        player.hand.sort((a, b) {
-          final rankCompare = rankOrder.indexOf(a.rank).compareTo(rankOrder.indexOf(b.rank));
-          if (rankCompare != 0) return rankCompare;
-          return suitOrder.indexOf(a.suit).compareTo(suitOrder.indexOf(b.suit));
-        });
-      }
+      // const rankOrder = ['Joker' 'Joker1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+      // const suitOrder = ['C', 'D', 'H', 'S'];
+      // for (var player in players) {
+      //   player.hand.sort((a, b) {
+      //     final rankCompare = rankOrder.indexOf(a.rank).compareTo(rankOrder.indexOf(b.rank));
+      //     if (rankCompare != 0) return rankCompare;
+      //     return suitOrder.indexOf(a.suit).compareTo(suitOrder.indexOf(b.suit));
+      //   });
+      // }
 
-      for (var player in players) {
-        await gameRef.collection('players').doc(player.id).update({
-          'hand': player.hand.map((card) => card.toMap()).toList(),
-        });
-      }
-
-      await gameRef.update({
-        'current_players': players.length,
-        'deck': deck.cards.map((card) => card.toMap()).toList(),
-        'table': [],
-        'discardPile': [],
-        'currentPlayer': players[0].id,
-        'isGameStarted': true,
+      // for (var player in players) {
+      //   await gameRef.collection('players').doc(player.id).update({
+      //     'hand': player.hand.map((card) => card.toMap()).toList(),
+      //   });
+      // }
+      gameRef.update({
         'roundNumber': 1,
       });
     } catch (e) {
@@ -97,6 +91,54 @@ class FirestoreController {
       rethrow;
     }
   }
+
+  //Distirbute
+  Future<void> distributeCards(String gameId, List<Player> players) async {
+    print("Call distributeCards");
+    final gameRef = _firestore.collection('games').doc(gameId);
+
+    // Shuffle players and deck
+    players.shuffle();
+    final deck = Deck()..shuffle();
+
+    // First player can draw
+    players.first.setDrawed(true);
+
+    // Deal to all players
+    int cardsToDeal = players.length * 11 + 1;
+    int playerIndex = 0;
+    for (int i = 0; i < cardsToDeal; i++) {
+      final card = deck.dealOne();
+      players[playerIndex].addCardToHand(card);
+      playerIndex = (playerIndex + 1) % players.length;
+    }
+
+    // Sort the hands
+    const rankOrder = ['Joker', 'Joker1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+    const suitOrder = ['C', 'D', 'H', 'S'];
+    for (var player in players) {
+      player.hand.sort((a, b) {
+        final rankCompare = rankOrder.indexOf(a.rank).compareTo(rankOrder.indexOf(b.rank));
+        return rankCompare != 0
+            ? rankCompare
+            : suitOrder.indexOf(a.suit).compareTo(suitOrder.indexOf(b.suit));
+      });
+      // Update Firestore hand
+      await gameRef.collection('players').doc(player.id).update({
+        'hand': player.hand.map((card) => card.toMap()).toList(),
+      });
+    }
+
+    // Update game state
+    await gameRef.update({
+      'deck': deck.cards.map((card) => card.toMap()).toList(),
+      'discardPile': [],
+      'table': [],
+      'currentPlayer': players.first.id,
+      'isGameStarted': true,
+    });
+  }
+
 
 //Deck
   Future<void> resetDeck(String gameId) async {

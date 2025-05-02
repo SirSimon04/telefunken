@@ -106,13 +106,21 @@ class TelefunkenGame extends FlameGame with TapDetector {
       firestoreController: firestoreController,
     );
 
+    // Assign the callback BEFORE syncing, so it's ready
+    gameLogic!.onNextRoundStarted = () {
+      print("TelefunkenGame: onNextRoundStarted triggered. Starting new round UI.");
+      startRound(); // Call the new method to handle UI reset and dealing
+    };
+
     await gameLogic!.syncWithFirestore();
     gameLogic!.listenToGameState();
     gameLogic!.listenToPlayerUpdates();
 
+
     _displayPlayers(gameLogic!.players);
     playerIndex = gameLogic!.players.indexWhere((player) => player.id == playerId);
-    _distributeCards(deckPosition);
+    // Initial round start
+    startRound();
   }
 
   void _displayPlayers(List<Player> players) async {
@@ -137,17 +145,50 @@ class TelefunkenGame extends FlameGame with TapDetector {
   }
 
   Future<void> _distributeCards(Vector2 deckPos) async {
-    int count = 0;
-    final totalCards = maxPlayers * 11 + 1;
-    for (int i = 0; i < totalCards; i++) {
-      final idx = i % maxPlayers;
-      await _dealCardAnimation(
-        deckPos,
-        playerPositions[gameLogic!.players[idx].name] ?? Vector2(size.x / 2, size.y - 100),
-      );
-      count++;
-      _updateCardsLeftText(108 - count);
+    // Clear any leftover card components from previous rounds/animations
+    children.whereType<CardComponent>().forEach(remove);
+    removeSpriteCards('opponentCards');
+    removeSpriteCards('tableGroup_'); // Clear all table groups
+    removeSpriteCards('discard');
+
+    // Ensure deck UI is visible if deck isn't empty
+    if (gameLogic != null && gameLogic!.getDeckLength() > 0 && deckUI.parent == null) {
+       add(deckUI);
     }
+
+    int cardsToDealPerPlayer = 11; // Standard Telefunken
+    int totalCardsToDeal = maxPlayers * cardsToDealPerPlayer;
+    int dealtCount = 0;
+
+    // Make sure playerPositions are ready
+    if (playerPositions.length != maxPlayers) {
+       print("Warning: Player positions not fully initialized before dealing.");
+       // Optionally re-run _displayPlayers or wait
+       await Future.delayed(Duration(milliseconds: 100)); // Small delay
+    }
+
+
+    print("Distributing $cardsToDealPerPlayer cards to $maxPlayers players.");
+    for (int cardIndex = 0; cardIndex < cardsToDealPerPlayer; cardIndex++) {
+      for (int playerIdx = 0; playerIdx < maxPlayers; playerIdx++) {
+         final targetPlayer = gameLogic!.players[playerIdx];
+         final targetPosition = playerPositions[targetPlayer.name];
+
+         if (targetPosition == null) {
+            print("Error: Could not find position for player ${targetPlayer.name}");
+            continue; // Skip dealing to this player if position is missing
+         }
+
+         await _dealCardAnimation(
+           deckPos,
+           targetPosition,
+         );
+         dealtCount++;
+         _updateCardsLeftText(108 - dealtCount); // Assuming 108 total cards initially
+      }
+    }
+    print("Finished distributing cards.");
+    // Update UI after dealing animation is complete
     updateUI();
   }
 
@@ -211,7 +252,25 @@ class TelefunkenGame extends FlameGame with TapDetector {
         gameLogic: gameLogic!,
         onCardsDropped: handleCardsDrop,
         position: pos,
+        game: this, // Pass the TelefunkenGame instance
       ));
+    }
+  }
+
+  void handleDragOnPlayedMove(List<CardEntity> moveEntities) {
+    print("Drag detected on a card within currentMoves. Resetting move: $moveEntities");
+    // Find the CardComponent instances corresponding to the moveEntities
+    final componentsToReset = children.whereType<CardComponent>().where((comp) {
+      // Ensure the component is actually part of the player's hand currently
+      return comp.ownerId == playerId && moveEntities.any((entity) => entity.toString() == comp.card.toString());
+    }).toList();
+
+    if (componentsToReset.isNotEmpty) {
+      resetGroupToOriginalPosition(componentsToReset);
+    } else {
+      print("Warning: Could not find CardComponents to reset for move: $moveEntities");
+      // Fallback: Still remove from gameLogic.currentMoves if possible
+      gameLogic?.removeMove(moveEntities);
     }
   }
 
@@ -297,8 +356,10 @@ class TelefunkenGame extends FlameGame with TapDetector {
 
   void updateUI() async {
     if (!_isGameLogicInitialized || gameLogic == null || gameLogic!.players.isEmpty) {
+      print("UpdateUI called but game not ready. Skipping.");
       return;
     }
+    print("Updating UI...");
 
     if (gameLogic!.isGameOver()) {
       print("Game Over");
@@ -306,15 +367,21 @@ class TelefunkenGame extends FlameGame with TapDetector {
       return;
     }
 
+    // Clear previous state components first
+    children.whereType<CardComponent>().forEach(remove); // Clear player's hand cards
     removeSpriteCards('opponentCards');
     removeSpriteCards('discard');
+    removeSpriteCards('tableGroup_'); // Clear all table groups
+
+
     _updateCardsLeftText();
-    displayCurrentPlayerHand();
-    displayOpponentsHand();
-    showTable();
-    showDiscardPile();
-    updatePlayersText();
-    updateCoinTexts();
+    displayCurrentPlayerHand(); // Display new hand
+    displayOpponentsHand(); // Display opponent backs
+    showTable(); // Display current table state (might be empty at round start)
+    showDiscardPile(); // Display current discard pile (might be empty)
+    updatePlayersText(); // Update player names/highlighting
+    updateCoinTexts(); // Update coin display
+    print("UI Update finished.");
   }
 
   void updatePlayersText() async {
@@ -392,11 +459,13 @@ class TelefunkenGame extends FlameGame with TapDetector {
       ..anchor = Anchor.center);
   }
 
-  void removeSpriteCards(String label) {
+  void removeSpriteCards(String labelPrefix) {
+    // Use startsWith for labels like 'tableGroup_'
     final toRemove = children.where((c) =>
-    c is LabeledSpriteComponent && (c).label == label).toList();
-    for (var comp in toRemove) {
-      comp.removeFromParent();
+        c is LabeledSpriteComponent && c.label.startsWith(labelPrefix)).toList();
+    if (toRemove.isNotEmpty) {
+        print("Removing ${toRemove.length} components with label prefix '$labelPrefix'");
+        removeAll(toRemove);
     }
   }
 
@@ -501,13 +570,30 @@ class TelefunkenGame extends FlameGame with TapDetector {
   }
 
   void resetGroupToOriginalPosition(List<CardComponent> group) {
+    // Extract the CardEntity list from the CardComponent list
+    final List<CardEntity> cardEntities = group.map((comp) => comp.card).toList();
+
+    // Call GameLogic to remove this specific move from currentMoves
+    if (gameLogic != null) {
+      gameLogic!.removeMove(cardEntities);
+    }
+
+    // Reset visual position and highlighting
     for (var cardComponent in group) {
       cardComponent.setHighlighted(false);
-      cardComponent.add(MoveEffect.to(
-        cardComponent.originalPosition!,
-        EffectController(duration: 0.5, curve: Curves.easeOut),
-      ));
+      if (cardComponent.originalPosition != null) {
+        cardComponent.add(MoveEffect.to(
+          cardComponent.originalPosition!,
+          EffectController(duration: 0.5, curve: Curves.easeOut),
+        ));
+      } else {
+         // Fallback if originalPosition is somehow null (shouldn't happen often)
+         print("Warning: originalPosition was null for card ${cardComponent.card}");
+         // Maybe remove the component or move it to a default spot
+      }
     }
+     // Ensure selectedCards is cleared after resetting
+     CardComponent.selectedCards.clear();
   }
 
   void showWinningScreen() async {
@@ -520,6 +606,32 @@ class TelefunkenGame extends FlameGame with TapDetector {
       position: Vector2(size.x / 2, size.y / 2),
       anchor: Anchor.center,
     ));
+  }
+
+  // New method to start a round
+  void startRound() async {
+    print("Starting round UI setup...");
+    // 1. Clear existing game elements from the board
+    children.whereType<CardComponent>().forEach(remove);
+    removeSpriteCards('opponentCards');
+    removeSpriteCards('tableGroup_'); // Clear all table groups using prefix
+    removeSpriteCards('discard');
+
+    // 2. Ensure deck is visible (it might have been removed if empty before)
+     if (gameLogic != null && gameLogic!.getDeckLength() > 0 && deckUI.parent == null) {
+       add(deckUI);
+       print("Deck UI added back.");
+     } else if (gameLogic != null && gameLogic!.getDeckLength() == 0 && deckUI.parent != null) {
+         remove(deckUI);
+         print("Deck UI removed (deck empty).");
+     }
+
+    // 3. Distribute cards with animation
+    await _distributeCards(deckPosition);
+
+    // 4. UpdateUI is called at the end of _distributeCards now.
+    //    If you need immediate updates before animation finishes, call parts of updateUI here.
+    print("Round UI setup complete.");
   }
 
   //Firestore Controller
