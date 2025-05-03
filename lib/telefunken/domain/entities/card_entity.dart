@@ -39,4 +39,8 @@ class CardEntity {
       rank: drawData['rank'] as String,
     );
   }
+
+  bool isJoker() {
+    return rank == "Joker" || rank == "Joker2";
+  }
 }
