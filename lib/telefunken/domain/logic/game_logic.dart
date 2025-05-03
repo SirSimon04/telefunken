@@ -295,7 +295,7 @@ class GameLogic {
       players[currentPlayerIndex].removeCardFromHand(card);
       addCurrentMovesToTable();
       removeCurrentMovesFromPlayersHand();
-      players[currentPlayerIndex].setOut();
+      players[currentPlayerIndex].setOut(true);
       firestoreController.updatePlayer(
         gameId,
         players[currentPlayerIndex].id,

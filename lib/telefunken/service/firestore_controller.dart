@@ -53,41 +53,37 @@ class FirestoreController {
 
       final players = playersData.map((data) => Player.fromMap(data)).toList();
       await distributeCards(gameId, players);
-      // players.shuffle();
 
-      // final deck = Deck();
-      // deck.shuffle();
-
-      // players[0].setDrawed(true);
-
-      // int playerIndex = 0;
-      // int cardsToDeal = players.length * 11 + 1;
-      // for (int i = 0; i < cardsToDeal; i++) {
-      //   final card = deck.dealOne();
-      //   players[playerIndex].addCardToHand(card);
-      //   playerIndex = (playerIndex + 1) % players.length;
-      // }
-
-      // const rankOrder = ['Joker' 'Joker1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
-      // const suitOrder = ['C', 'D', 'H', 'S'];
-      // for (var player in players) {
-      //   player.hand.sort((a, b) {
-      //     final rankCompare = rankOrder.indexOf(a.rank).compareTo(rankOrder.indexOf(b.rank));
-      //     if (rankCompare != 0) return rankCompare;
-      //     return suitOrder.indexOf(a.suit).compareTo(suitOrder.indexOf(b.suit));
-      //   });
-      // }
-
-      // for (var player in players) {
-      //   await gameRef.collection('players').doc(player.id).update({
-      //     'hand': player.hand.map((card) => card.toMap()).toList(),
-      //   });
-      // }
       gameRef.update({
         'roundNumber': 1,
       });
     } catch (e) {
       print('Error starting game: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> startNewRound(String gameId) async {
+    try {
+      final gameRef = _firestore.collection('games').doc(gameId);
+      final gameSnapshot = await gameRef.get();
+      final playersData = await getPlayers(gameId);
+      final players = playersData.map((data) => Player.fromMap(data)).toList();
+
+      // Reset player states
+      for (var player in players) {
+        player.clearHand();
+        player.setDrawed(false);
+        player.setOut(false);
+        await updatePlayer(gameId, player.id, player.toMap());
+      }
+
+      // Reset deck and distribute cards
+      await resetDeck(gameId);
+      await distributeCards(gameId, players);
+
+    } catch (e) {
+      print('Error starting new round: $e');
       rethrow;
     }
   }
