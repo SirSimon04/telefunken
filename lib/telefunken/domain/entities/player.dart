@@ -62,8 +62,8 @@ class Player {
     hand.clear();
   }
 
-  void setOut() {
-    out = true;
+  void setOut(bool out) {
+    this.out = out;
   }
 
   bool isOut() {
