@@ -266,6 +266,11 @@ class GameLogic {
   Future<bool> validateDiscard(CardEntity card) async {
     if (!hasDrawnCard) return false;
 
+    if (card.rank == '2' || card.rank == 'Joker') {
+      print("Cannot discard a 2 or Joker.");
+      return false;
+    }
+
     if (currentMoves.isEmpty) {
       if (!ruleSet.validateDiscard(card)) return false;
 
