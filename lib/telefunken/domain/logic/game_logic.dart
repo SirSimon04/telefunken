@@ -54,7 +54,7 @@ class GameLogic {
         currentPlayerIndex = index;
       }
 
-      hasDrawnCard = players[currentPlayerIndex].hasDrawed();
+      hasDrawnCard = players[currentPlayerIndex].getHasDrawn();
 
       final deckData = await firestoreController.getDeck(gameId);
       if (deckData.isNotEmpty) {
@@ -95,7 +95,7 @@ class GameLogic {
 
   void nextTurn() async {
     hasDrawnCard = false;
-    await firestoreController.updatePlayer(
+        await firestoreController.updatePlayer(
       gameId,
       players[currentPlayerIndex].id,
       {
@@ -106,31 +106,21 @@ class GameLogic {
 
     currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
 
+    hasDrawnCard = false;
 
     await firestoreController.updateGameState(gameId, {
       'currentPlayer': players[currentPlayerIndex].id,
-      'discardPile': discardPile.map((card) => card.toMap()).toList(),
     });
 
+    
     await Future.delayed(const Duration(milliseconds: 200));
   }
 
-  Future<void> nextRound(String roundWinnerPlayerId) async {
-    final roundWinner = players.firstWhere(
-      (p) => p.id == roundWinnerPlayerId,
-      orElse: () => players[0], // Fallback, though should always find the player
-    );
-
-    final temp = players.removeAt(0);
-    players.add(temp);
-
-    for (var p in players) {
-      p.hand.clear();
-    }
-    table.clear();
-    discardPile.clear();
-
-    currentPlayerIndex = 0;
+  Future<void> nextRound() async {
+    // final roundWinner = players.firstWhere(
+    //   (p) => p.id == roundWinnerPlayerId,
+    //   orElse: () => players[0], // Fallback, though should always find the player
+    // );
 
     // --- Updated Show Dialog ---
     if (navigatorKey.currentContext != null) {
@@ -152,7 +142,7 @@ class GameLogic {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('${roundWinner.name} finished the last round!'),
+                  Text('ddd finished the last round!'),
                   const SizedBox(height: 15),
                   Text('Current Scores:', style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 5),
@@ -172,16 +162,6 @@ class GameLogic {
                 ],
               ),
             ),
-            actions: <Widget>[
-               TextButton(
-                 child: const Text('OK'),
-                 onPressed: () {
-                   if (Navigator.of(context).canPop()) {
-                     Navigator.of(context).pop();
-                   }
-                 },
-               ),
-             ],
           );
         },
       );
@@ -189,8 +169,8 @@ class GameLogic {
        print("Error: navigatorKey.currentContext is null. Cannot show dialog.");
     }
     //wait the 10 seconds
-    await Future.delayed(const Duration(seconds: 15));
-    await firestoreController.distributeCards(gameId, players);
+    await Future.delayed(const Duration(seconds: 11));
+
     onNextRoundStarted?.call(); // Notify UI if needed
   }
 
@@ -217,6 +197,7 @@ class GameLogic {
 
     players[currentPlayerIndex].addCardToHand(drawnCard);
     hasDrawnCard = true;
+    players[currentPlayerIndex].setDrawed(true);
 
     try {
       await firestoreController.updatePlayer(
@@ -363,11 +344,7 @@ class GameLogic {
       });
       return true;
     } else {
-      await firestoreController.updateGameState(gameId, {
-        'roundWinner': roundWinnerId,
-        'roundNumber': roundNumber++,
-        'isGameOver': false,
-      });
+      firestoreController.startNewRound(gameId, roundWinnerId);
       return true;
     }
   }
@@ -496,7 +473,7 @@ class GameLogic {
       }
 
       if(data['roundNumber'] != roundNumber) {
-        //nextRound(players[currentPlayerIndex].id);
+        nextRound();
       }
       roundNumber = data['roundNumber'] ?? roundNumber;
 

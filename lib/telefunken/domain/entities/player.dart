@@ -5,13 +5,13 @@ class Player {
   final String name;
   final bool isAI;
 
-  late bool out;
-  late bool drawed;
+  bool out = false;
+  bool hasDrawn = false;
   List<CardEntity> hand = [];
-  late int coins;
-  late int points;
+  int coins = 0;
+  int points = 0;
 
-  Player({required this.id, required this.name, this.isAI = false, this.out = false, this.drawed = false});
+  Player({required this.id, required this.name, this.isAI = false, this.out = false, this.hasDrawn = false});
 
   void addCardToHand(CardEntity card) {
     hand.add(card);
@@ -27,7 +27,7 @@ class Player {
       'name': name,
       'isAI': isAI,
       'isOut': isOut,
-      'drawed': hasDrawed,
+      'hasDrawn': hasDrawn,
       'hand': hand.map((card) => card.toMap()).toList(),
       'coins': coins,
       'points': points,
@@ -42,7 +42,7 @@ class Player {
       isAI: map['isAI'] as bool? ?? false,
     )
       ..out = map['isOut'] as bool? ?? false
-      ..drawed = map['drawed'] as bool? ?? false
+      ..hasDrawn = map['hasDrawn'] as bool? ?? false
       ..hand = (map['hand'] as List).map((card) => CardEntity.fromMap(card as Map<String, dynamic>)).toList()
       ..coins = map['coins'] as int? ?? 0
       ..points = map['points'] as int? ?? 0;
@@ -86,10 +86,12 @@ class Player {
     this.points += points;
   }
 
-  void setDrawed(bool drawed) {
-    this.drawed = drawed;
+  void setDrawed(bool drawed) { // Keep this if used elsewhere, but prefer setHasDrawn
+    this.hasDrawn = drawed;
   }
-  bool hasDrawed() {
-    return drawed;
+
+  // Rename hasDrawed() to hasDrawn()
+  bool getHasDrawn() {
+    return hasDrawn; // Use the renamed field
   }
 }
