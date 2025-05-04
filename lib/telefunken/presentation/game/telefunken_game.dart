@@ -39,6 +39,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
   late Rect discardZone;
   late Rect tableZone;
   List<TextComponent> roundConditionComponents = [];
+  late bool distributed = true;
 
   final List<String> roundConditions = [
     "2 sets of 3",
@@ -164,6 +165,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
   }
 
   Future<void> _distributeCards(Vector2 deckPos) async {
+    distributed = false;
     children.whereType<CardComponent>().forEach(remove);
     removeSpriteCards('opponentCards');
     removeSpriteCards('tableGroup_');
@@ -197,6 +199,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
         _updateCardsLeftText(108 - dealtCount);
       }
     }
+    distributed = true;
     updateUI();
   }
 
@@ -355,6 +358,9 @@ class TelefunkenGame extends FlameGame with TapDetector {
 
   void updateUI() async {
     if (!_isGameLogicInitialized || gameLogic == null || gameLogic!.players.isEmpty) {
+      return;
+    }
+    if(!distributed) {
       return;
     }
 
