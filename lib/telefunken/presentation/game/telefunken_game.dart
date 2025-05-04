@@ -48,7 +48,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
     "1 set of 5", // Round 4
     "2 sets of 5", // Round 5
     "1 set of 6", // Round 6
-    "1 sequence of 7", // Round 7
+    "Sequence of 7", // Round 7
   ];
 
   bool _isGameLogicInitialized = false;
