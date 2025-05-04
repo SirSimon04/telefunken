@@ -137,12 +137,18 @@ class TelefunkenGame extends FlameGame with TapDetector {
   }
 
   void _displayPlayers(List<Player> players) async {
-    final radius = 180.0;
+    // Adjust radius based on player count for better spacing
+    final radius = players.length > 3 ? 200.0 : 180.0; // Increase radius for 4+ players
+    final totalAngleRange = pi * 0.8; // Distribute over 144 degrees (adjust as needed)
+    final startAngle = (pi - totalAngleRange) / 2; // Center the distribution arc
+
     for (int i = 0; i < players.length; i++) {
       final player = players[i];
+      // Calculate angle: distribute evenly across the defined range
       final angle = players.length > 1
-          ? pi / 3 + (2 * pi / 3 - pi / 3) * (i / (players.length - 1))
-          : pi / 3;
+          ? startAngle + totalAngleRange * (i / (players.length - 1))
+          : pi / 2; // Center single player at the top
+      // Calculate position relative to the deck (center point)
       final playerPos = deckPosition - Vector2(radius * cos(angle), radius * sin(angle));
       playerPositions[player.name] = playerPos;
 
