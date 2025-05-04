@@ -256,4 +256,7 @@ class StandardRuleSet extends RuleSet {
         return false;
     }
   }
+
+  @override
+  int lastRoundNumber() => 7;
 }
