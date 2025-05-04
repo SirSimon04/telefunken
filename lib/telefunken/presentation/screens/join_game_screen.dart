@@ -109,62 +109,89 @@ class JoinGameScreen extends StatelessWidget {
     );
   }
 
-  void _showJoinGameDialog(BuildContext context, String roomId, String room_name, bool requiresPassword, String? correctPassword) {
+  void _showJoinGameDialog(BuildContext context, String roomId, String room_name, bool requiresPassword, String? correctPassword) async {
     final TextEditingController playerNameController = TextEditingController();
     final TextEditingController passwordController = TextEditingController();
+    // Suche die aktuellen Spielernamen aus der Firestore-Datenbank
+    final firestoreController = FirestoreController();
+    final players = await firestoreController.getPlayers(roomId);
 
     showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text("Join $room_name"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: playerNameController,
-                decoration: const InputDecoration(labelText: "Player Name"),
-              ),
-              const SizedBox(height: 10),
-              if (requiresPassword)
-                TextField(
-                  controller: passwordController,
-                  decoration: const InputDecoration(labelText: "Password"),
-                  obscureText: true,
+      builder: (dialogContext) => ScaffoldMessenger(
+        child: Builder(
+          builder: (scaffoldContext) => Scaffold( // Use another context name
+            backgroundColor: Colors.transparent, // Make scaffold background transparent
+            body: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => Navigator.of(dialogContext).pop(), // Use dialogContext to pop
+              child: GestureDetector(
+                onTap: () {}, // Prevent taps inside the dialog from closing it
+                child: AlertDialog(
+                  title: Text("Join $room_name"),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextField(
+                        controller: playerNameController,
+                        decoration: const InputDecoration(labelText: "Player Name"),
+                      ),
+                      const SizedBox(height: 10),
+                      if (requiresPassword)
+                        TextField(
+                          controller: passwordController,
+                          decoration: const InputDecoration(labelText: "Password"),
+                          obscureText: true,
+                        ),
+                    ],
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(dialogContext), // Use dialogContext
+                      child: const Text("Cancel"),
+                    ),
+                    ElevatedButton(
+                      onPressed: () async {
+                        String playerName = playerNameController.text.trim();
+                        String enteredPassword = passwordController.text.trim();
+
+                        if (playerName.isEmpty) {
+                          ScaffoldMessenger.of(scaffoldContext).showSnackBar( // Use scaffoldContext
+                            const SnackBar(content: Text("Please enter your name!")),
+                          );
+                          return;
+                        }
+
+                        //check if player name is already taken
+                        for (var player in players) {
+                          if (player['name'] == playerName) {
+                            ScaffoldMessenger.of(scaffoldContext).showSnackBar( // Use scaffoldContext
+                              const SnackBar(content: Text("Player name already taken!")),
+                            );
+                            return;
+                          }
+                        }
+
+                        if (requiresPassword && enteredPassword != correctPassword) {
+                          ScaffoldMessenger.of(scaffoldContext).showSnackBar( // Use scaffoldContext
+                            const SnackBar(content: Text("Incorrect password!")),
+                          );
+                          return;
+                        }
+                        // Close the dialog before navigating
+                        Navigator.pop(dialogContext);
+                        // Use the original context for navigation and joining game
+                        await _joinGame(context, roomId, playerName);
+                      },
+                      child: const Text("Join Game"),
+                    ),
+                  ],
                 ),
-            ],
+              ),
+            ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel"),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                String playerName = playerNameController.text.trim();
-                String enteredPassword = passwordController.text.trim();
-
-                if (playerName.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Please enter your name!")),
-                  );
-                  return;
-                }
-
-                if (requiresPassword && enteredPassword != correctPassword) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Incorrect password!")),
-                  );
-                  return;
-                }
-
-                await _joinGame(context, roomId, playerName);
-              },
-              child: const Text("Join Game"),
-            ),
-          ],
-        );
-      },
+        ),
+      ),
     );
   }
 
