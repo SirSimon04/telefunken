@@ -20,7 +20,7 @@ class GameLogic {
   final List<CardEntity> discardPile = [];
 
   late int currentPlayerIndex = 0;
-  late int roundNumber;
+  late int roundNumber = 1;
   late List<List<CardEntity>> currentMoves = [];
   late bool paused = false;
   late bool gameOver = false;
@@ -264,25 +264,21 @@ class GameLogic {
 
     if (!canDiscard) return false;
 
-    // Perform discard
     discardPile.add(card);
     players[currentPlayerIndex].removeCardFromHand(card);
 
-    // Update player hand in Firestore
-    await firestoreController.updatePlayer(
-      gameId,
-      players[currentPlayerIndex].id,
-      {
-        'hand': players[currentPlayerIndex].hand.map((c) => c.toMap()).toList(),
-        'isOut': playerIsOut || currentMoves.isNotEmpty, // Update isOut if moves were played
-      },
-    );
-
-    // Add moves to table if any were made this turn
     if (currentMoves.isNotEmpty) {
-      addCurrentMovesToTable(); // This updates Firestore table
-      removeCurrentMovesFromPlayersHand(); // Clears local currentMoves
-      players[currentPlayerIndex].setOut(true); // Update local state
+      addCurrentMovesToTable();
+      removeCurrentMovesFromPlayersHand();
+      players[currentPlayerIndex].setOut(true);
+    } else {
+      await firestoreController.updatePlayer(
+        gameId,
+        players[currentPlayerIndex].id,
+        {
+          'hand': players[currentPlayerIndex].hand.map((c) => c.toMap()).toList(),
+        },
+      );
     }
 
     // Update discard pile in Firestore
@@ -397,6 +393,20 @@ class GameLogic {
   }
 
   void removeCurrentMovesFromPlayersHand() async {
+    final player = players[currentPlayerIndex];
+    for (final move in currentMoves) {
+      player.removeCardsFromHand(move);
+
+    }
+  
+    await firestoreController.updatePlayer(
+      gameId,
+      player.id,
+      {
+        'hand': player.hand.map((c) => c.toMap()).toList(),
+        'isOut': true,
+      },
+    );
     currentMoves.clear();
   }
 
