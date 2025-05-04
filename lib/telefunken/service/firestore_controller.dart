@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:telefunken/telefunken/domain/entities/card_entity.dart'; // Ensure CardEntity is imported
+import 'package:telefunken/telefunken/domain/entities/card_entity.dart';
 import 'package:telefunken/telefunken/domain/entities/deck.dart';
 import 'package:telefunken/telefunken/domain/entities/player.dart';
 import 'package:uuid/uuid.dart';
@@ -7,7 +7,6 @@ import 'package:uuid/uuid.dart';
 class FirestoreController {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // Erstelle ein neues Spiel
   Future<String> createGame(
     String roomName,
     String hostPlayerName,
@@ -15,13 +14,13 @@ class FirestoreController {
     String ruleSet,
     int duration, {
     String? password,
-    String? hostPlayerId, // Add hostPlayerId
+    String? hostPlayerId,
   }) async {
     try {
       final gameDoc = await _firestore.collection('games').add({
         'room_name': roomName,
         'owner': hostPlayerName,
-        'ownerId': hostPlayerId, // Store the owner's ID
+        'ownerId': hostPlayerId,
         'current_players': 0,
         'max_players': maxPlayers,
         'rules': ruleSet,
@@ -29,18 +28,17 @@ class FirestoreController {
         'created_at': FieldValue.serverTimestamp(),
         'password': password,
         'isGameStarted': false,
-        'isGameOver': false, // Initialize isGameOver
+        'isGameOver': false,
         'deck': [],
         'table': [],
         'discardPile': [],
-        'currentPlayer': hostPlayerId, // Start with the host's ID
-        'readyPlayers': [], // Initialize readyPlayers list
-        'roundNumber': 0, // Start at round 0 before game starts
+        'currentPlayer': hostPlayerId,
+        'readyPlayers': [],
+        'roundNumber': 0,
       });
 
       return gameDoc.id;
     } catch (e) {
-      print('Error creating game: $e');
       rethrow;
     }
   }
@@ -65,7 +63,6 @@ class FirestoreController {
         'roundNumber': 1,
       });
     } catch (e) {
-      print('Error starting game: $e');
       rethrow;
     }
   }
@@ -76,29 +73,22 @@ class FirestoreController {
       final gameSnapshot = await gameRef.get();
       final gameData = gameSnapshot.data();
       if (gameData == null) {
-        print('Error: Game data not found for $gameId');
         return;
       }
 
       final playersData = await getPlayers(gameId);
-      // Ensure players are loaded correctly
       if (playersData.isEmpty) {
-        print('Error: No players found for game $gameId');
         return;
       }
       final players = playersData.map((data) => Player.fromMap(data)).toList();
       final currentRound = gameData['roundNumber'] ?? 0;
       final newRoundNumber = currentRound + 1;
 
-      // Determine the starting player for the new round (player after the winner)
       int winnerIndex = players.indexWhere((p) => p.id == previousWinnerId);
-      if (winnerIndex == -1) winnerIndex = 0; // Fallback if winner not found
+      if (winnerIndex == -1) winnerIndex = 0; // Fallback
       final startingPlayerIndex = (winnerIndex + 1) % players.length;
       final startingPlayerId = players[startingPlayerIndex].id;
 
-      print('Starting Round $newRoundNumber. Winner was ${players[winnerIndex].name}. Starting player: ${players[startingPlayerIndex].name}');
-
-      // Reset player states in Firestore
       for (var player in players) {
         await updatePlayer(gameId, player.id, {
           'hand': [],
@@ -107,81 +97,60 @@ class FirestoreController {
         });
       }
 
-      // Update game state for the new round BEFORE distributing
       await gameRef.update({
         'table': [],
-        'discardPile': [], // Will be set by distributeCards
+        'discardPile': [],
         'roundNumber': newRoundNumber,
         'currentPlayer': startingPlayerId,
-        // 'deck' will be updated by distributeCards with the remaining cards
       });
 
-      // Distribute cards using the newly created deck data
       await resetDeck(gameId);
       await distributeCards(gameId, players);
 
-      print("New round setup complete in Firestore for game $gameId.");
-
     } catch (e) {
-      print('Error starting new round: $e');
       rethrow;
     }
   }
 
-  //Distribute cards for a new round
   Future<void> distributeCards(String gameId, List<Player> players) async {
-    print("Distributing cards for game $gameId");
     final gameRef = _firestore.collection('games').doc(gameId);
-
-    // Use the provided deck list (already shuffled)
     List<Map<String, dynamic>> currentDeck = await getDeck(gameId);
 
-
     if (currentDeck.isEmpty) {
-      print('Error: Deck data is missing or empty for distribution.');
       return;
     }
 
-    // Deal 11 cards to each player
     int cardsToDeal = 11;
     for (var player in players) {
         List<Map<String, dynamic>> playerHandData = [];
         for (int i = 0; i < cardsToDeal; i++) {
             if (currentDeck.isNotEmpty) {
-                playerHandData.add(currentDeck.removeAt(0)); // Deal from the top
+                playerHandData.add(currentDeck.removeAt(0));
             } else {
-                print("Error: Deck ran out of cards during dealing for player ${player.id}.");
-                // Decide how to handle this - stop dealing? throw error?
                 break;
             }
         }
 
-        // Sort the hand before saving (using CardEntity for robust sorting)
         List<CardEntity> playerHandEntities = playerHandData.map((cardMap) => CardEntity.fromMap(cardMap)).toList();
         const rankOrder = ['Joker', 'Joker1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
-        const suitOrder = ['C', 'D', 'H', 'S']; // Clubs, Diamonds, Hearts, Spades
+        const suitOrder = ['C', 'D', 'H', 'S'];
         playerHandEntities.sort((a, b) {
             final rankCompare = rankOrder.indexOf(a.rank).compareTo(rankOrder.indexOf(b.rank));
             if (rankCompare != 0) return rankCompare;
-            // Jokers might not have a suit or have a special one, handle appropriately
-            if (a.isJoker() || b.isJoker()) return 0; // Keep Jokers together or define their sort order
+            if (a.isJoker() || b.isJoker()) return 0;
             return suitOrder.indexOf(a.suit).compareTo(suitOrder.indexOf(b.suit));
         });
 
-        // Update Firestore hand for the player with sorted map data
         await gameRef.collection('players').doc(player.id).update({
             'hand': playerHandEntities.map((card) => card.toMap()).toList(),
         });
-        print("Dealt ${playerHandEntities.length} cards to player ${player.name}");
     }
 
     await gameRef.update({
-      'deck': currentDeck, 
+      'deck': currentDeck,
     });
-    print("Updated remaining deck (${currentDeck.length} cards) and discard pile in Firestore.");
   }
 
-  //Deck
   Future<List<Map<String, dynamic>>> resetDeck(String gameId) async {
     try {
       final deck = Deck();
@@ -190,11 +159,8 @@ class FirestoreController {
       final gameRef = _firestore.collection('games').doc(gameId);
 
       await gameRef.update({'deck': deckData});
-
-      print("Reset and shuffled deck in Firestore for game $gameId. Deck size: ${deckData.length}");
-      return deckData; 
+      return deckData;
     } catch (e) {
-      print('Error resetting deck: $e');
       rethrow;
     }
   }
@@ -207,16 +173,13 @@ class FirestoreController {
       if (deck != null && deck.isNotEmpty) {
         return deck.map((card) => Map<String, dynamic>.from(card)).toList();
       } else {
-        print('Deck data is missing or empty.');
         return [];
       }
     } catch (e) {
-      print('Error fetching deck: $e');
       return [];
     }
   }
 
-  //Spieler
   Future<String> addPlayer(String gameId, String playerName) async {
     try {
       final gameRef = _firestore.collection('games').doc(gameId);
@@ -238,7 +201,6 @@ class FirestoreController {
 
       return playerId;
     } catch (e) {
-      print('Error adding player: $e');
       rethrow;
     }
   }
@@ -248,7 +210,6 @@ class FirestoreController {
       final playersSnapshot = await _firestore.collection('games').doc(gameId).collection('players').get();
       return playersSnapshot.docs.map((doc) => doc.data()).toList();
     } catch (e) {
-      print('Error fetching players: $e');
       return [];
     }
   }
@@ -264,7 +225,6 @@ class FirestoreController {
 
       await playerRef.delete();
     } catch (e) {
-      print('Error removing player: $e');
       rethrow;
     }
   }
@@ -274,7 +234,6 @@ class FirestoreController {
       final playerRef = _firestore.collection('games').doc(gameId).collection('players').doc(playerId);
       await playerRef.update({'hand': hand});
     } catch (e) {
-      print('Error updating player hand: $e');
       rethrow;
     }
   }
@@ -284,12 +243,10 @@ class FirestoreController {
       final playerRef = _firestore.collection('games').doc(gameId).collection('players').doc(playerId);
       await playerRef.update({'points': points});
     } catch (e) {
-      print('Error updating player points: $e');
       rethrow;
     }
   }
 
-  // Beobachte Änderungen im Spielstatus
   Stream<DocumentSnapshot<Map<String, dynamic>>> listenToGameState(String gameId) {
     final gameRef = _firestore.collection('games').doc(gameId);
     return gameRef.snapshots();
@@ -309,7 +266,7 @@ class FirestoreController {
           .collection('games')
           .doc(gameId)
           .collection('draw_events')
-          .doc(); // Auto-ID für jedes Event
+          .doc();
 
       await drawEventsRef.set({
         'gameId': gameId,
@@ -319,7 +276,6 @@ class FirestoreController {
         'timestamp': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      print('Error creating draw event: $e');
       rethrow;
     }
   }
@@ -346,34 +302,28 @@ class FirestoreController {
       final playerRef = _firestore.collection('games').doc(gameId).collection('players').doc(playerId);
       await playerRef.update(playerData);
     } catch (e) {
-      print('Error updating player: $e');
       rethrow;
     }
   }
 
-  // Spielstatus aktualisieren
   Future<void> updateGameState(String gameId, Map<String, dynamic> gameState) async {
     try {
       final gameRef = _firestore.collection('games').doc(gameId);
       await gameRef.update(gameState);
     } catch (e) {
-      print('Error updating game state: $e');
       rethrow;
     }
   }
 
-  // Hole das komplette Spiel-Dokument
   Future<DocumentSnapshot<Map<String, dynamic>>> getGame(String gameId) async {
     try {
       final gameRef = _firestore.collection('games').doc(gameId);
       return await gameRef.get();
     } catch (e) {
-      print('Error fetching game: $e');
       rethrow;
     }
   }
 
-  // Rundenpunktzahl
   Future<void> updateRoundScores(
     String gameId, int roundNumber, Map<String, int> playerScores) async {
     try {
@@ -384,7 +334,7 @@ class FirestoreController {
           .doc(roundNumber.toString())
           .set(playerScores);
     } catch (e) {
-      print('Error updating round scores: $e');
+      rethrow;
     }
   }
 
@@ -403,12 +353,10 @@ class FirestoreController {
         return {};
       }
     } catch (e) {
-      print('Error getting round scores: $e');
       return {};
     }
   }
 
-  // Mark a player as ready for rematch and check if all are ready
   Future<void> markPlayerReadyForRematch(String gameId, String playerId) async {
     final gameRef = _firestore.collection('games').doc(gameId);
 
@@ -422,44 +370,43 @@ class FirestoreController {
         final maxPlayers = gameData['max_players'] as int;
         List<dynamic> readyPlayers = List.from(gameData['readyPlayers'] ?? []);
 
-        // Add player to ready list if not already present
         if (!readyPlayers.contains(playerId)) {
           readyPlayers.add(playerId);
           transaction.update(gameRef, {
             'readyPlayers': readyPlayers,
           });
-          
 
-          // Check if all players are ready
           if (readyPlayers.length == maxPlayers) {
-            print("All players ready for rematch!");
-            await resetGameForRematch(gameId);
+            // Call resetGameForRematch within the transaction
+            await resetGameForRematch(gameId, transaction: transaction);
           }
         }
       });
 
     } catch (e) {
-      print("Error marking player ready for rematch: $e");
       rethrow;
     }
   }
 
-  // Reset the game state for a new match with the same players
-  Future<void> resetGameForRematch(String gameId) async {
-    print("Resetting game $gameId for rematch...");
+  // Added optional transaction parameter
+  Future<void> resetGameForRematch(String gameId, {Transaction? transaction}) async {
     final gameRef = _firestore.collection('games').doc(gameId);
 
     try {
-       final gameSnapshot = await gameRef.get();
+       DocumentSnapshot<Map<String, dynamic>> gameSnapshot;
+       if (transaction != null) {
+         gameSnapshot = await transaction.get(gameRef);
+       } else {
+         gameSnapshot = await gameRef.get();
+       }
+
        final gameData = gameSnapshot.data();
        if (gameData == null) {
-         print("Error: Cannot reset non-existent game $gameId");
          return;
        }
-       final String originalOwnerId = gameData['ownerId'] ?? ''; // Assuming you store owner ID
+       final String originalOwnerId = gameData['ownerId'] ?? '';
 
-      // Reset game document fields
-      await gameRef.update({
+      final updates = {
         'roundNumber': 1,
         'isGameOver': false,
         'winner': null,
@@ -467,30 +414,38 @@ class FirestoreController {
         'discardPile': [],
         'readyPlayers': [],
         'currentPlayer': originalOwnerId,
-      });
+      };
 
-      // Reset player subcollection documents
+      if (transaction != null) {
+        transaction.update(gameRef, updates);
+      } else {
+        await gameRef.update(updates);
+      }
+
       final playersSnapshot = await gameRef.collection('players').get();
       for (var playerDoc in playersSnapshot.docs) {
-        await playerDoc.reference.update({
+        final playerUpdates = {
           'points': 0,
           'hand': [],
           'isOut': false,
           'hasDrawn': false,
-          // Keep 'coins' or reset them based on rules
-        });
+        };
+        if (transaction != null) {
+          transaction.update(playerDoc.reference, playerUpdates);
+        } else {
+          await playerDoc.reference.update(playerUpdates);
+        }
       }
 
-      // Reset and distribute cards
-      await resetDeck(gameId);
-      final playersData = await getPlayers(gameId); // Fetch updated player data (mainly IDs)
-      final players = playersData.map((data) => Player.fromMap(data)).toList();
-      await distributeCards(gameId, players); // Distribute cards for round 1
+      if (transaction == null) {
+         await resetDeck(gameId);
+         final playersData = await getPlayers(gameId);
+         final players = playersData.map((data) => Player.fromMap(data)).toList();
+         await distributeCards(gameId, players);
+      }
 
-      print("Game $gameId reset successfully for rematch.");
 
     } catch (e) {
-      print("Error resetting game for rematch: $e");
       rethrow;
     }
   }
