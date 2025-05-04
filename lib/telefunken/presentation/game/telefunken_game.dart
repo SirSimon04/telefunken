@@ -1,10 +1,13 @@
 import 'dart:math';
+import 'dart:async'; // Import async for StreamSubscription
+import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
 import 'package:flame/collisions.dart';
 import 'package:flame/effects.dart';
 import 'package:flame/events.dart';
 import 'package:flame/game.dart';
 import 'package:flame/components.dart';
 import 'package:flutter/material.dart';
+import 'package:telefunken/config/navigator_key.dart';
 import 'package:telefunken/telefunken/domain/entities/card_entity.dart';
 import 'package:telefunken/telefunken/presentation/game/card_component.dart';
 import 'package:telefunken/telefunken/presentation/game/labeledTextComponent.dart';
@@ -56,6 +59,8 @@ class TelefunkenGame extends FlameGame with TapDetector {
   // Add a variable to track if the dialog is already shown
   bool _isGameOverDialogShown = false;
 
+  StreamSubscription? _rematchSubscription; // To listen for rematch readiness
+
   TelefunkenGame({
     required this.gameId,
     required this.playerId,
@@ -71,6 +76,13 @@ class TelefunkenGame extends FlameGame with TapDetector {
     listenToPlayersUpdate();
     listenToDrawAnimationTrigger();
     _listenToGameUpdates();
+  }
+
+  @override
+  void onRemove() {
+    _rematchSubscription?.cancel(); // Cancel subscription on remove
+    // Cancel other subscriptions if needed
+    super.onRemove();
   }
 
   Future<void> _loadUIComponents() async {
@@ -124,10 +136,8 @@ class TelefunkenGame extends FlameGame with TapDetector {
       firestoreController: firestoreController,
     );
 
-    // Assign the callback BEFORE syncing, so it's ready
     gameLogic!.onNextRoundStarted = () {
-      print("TelefunkenGame: onNextRoundStarted triggered. Starting new round UI.");
-      startRound(); // Call the new method to handle UI reset and dealing
+      startRound();
     };
 
     await gameLogic!.syncWithFirestore();
@@ -383,12 +393,6 @@ class TelefunkenGame extends FlameGame with TapDetector {
     }
     print("Updating UI...");
 
-    if (gameLogic!.isGameOver()) {
-      print("Game Over");
-      showWinningScreen();
-      return;
-    }
-
     // Clear previous state components first
     children.whereType<CardComponent>().forEach(remove); // Clear player's hand cards
     removeSpriteCards('opponentCards');
@@ -616,18 +620,6 @@ class TelefunkenGame extends FlameGame with TapDetector {
     CardComponent.selectedCards.clear();
   }
 
-  void showWinningScreen() async {
-    final gameSnapshot = await firestoreController.getGame(gameId);
-    final winner = gameSnapshot.data()?['winner'] ?? 'Unbekannt';
-
-    add(TextComponent(
-      text: 'Spieler $winner hat gewonnen!',
-      textRenderer: TextPaint(style: const TextStyle(fontSize: 48, color: Colors.black)),
-      position: Vector2(size.x / 2, size.y / 2),
-      anchor: Anchor.center,
-    ));
-  }
-
   // New method to display round conditions
   void _displayRoundConditions(int currentRound) {
     // Remove previous round condition texts
@@ -743,19 +735,63 @@ class TelefunkenGame extends FlameGame with TapDetector {
   }
 
   void _listenToGameUpdates() {
-    firestoreController.listenToGameState(gameId).listen((snapshot) {
+    // Cancel previous subscription if it exists
+    _rematchSubscription?.cancel();
+
+    _rematchSubscription = firestoreController.listenToGameState(gameId).listen((snapshot) {
       if (!snapshot.exists) return;
       final data = snapshot.data()!;
       bool isGameOver = data['isGameOver'] ?? false;
       String? winnerName = data['winner'] as String?;
+      int currentRound = data['roundNumber'] ?? 0; // Get current round number
 
-      // Check if game is over and dialog hasn't been shown yet
+      // --- Game Over Logic ---
       if (isGameOver && !_isGameOverDialogShown && winnerName != null) {
         _isGameOverDialogShown = true; // Prevent showing multiple dialogs
-        // Fetch final player scores (ensure players list is up-to-date)
-        List<Player> finalPlayers = gameLogic!.players; // Or fetch fresh if needed
-        _showGameOverDialog(buildContext!, winnerName, finalPlayers);
+        List<Player> finalPlayers = gameLogic?.players ?? []; // Use current players
+        // Ensure buildContext is available before showing dialog
+        if (buildContext != null) {
+           _showGameOverDialog(buildContext!, winnerName, finalPlayers);
+        } else {
+           print("Error: buildContext is null, cannot show game over dialog.");
+           // Maybe schedule it for the next frame?
+           Future.delayed(Duration.zero, () {
+              if (buildContext != null) {
+                 _showGameOverDialog(buildContext!, winnerName, finalPlayers);
+              }
+           });
+        }
       }
+      // --- Rematch Triggered Logic ---
+      else if (!isGameOver && _isGameOverDialogShown) {
+         // Game is no longer over, likely due to rematch reset
+         _isGameOverDialogShown = false;
+         // Close the dialog if it's open (use root navigator context if necessary)
+         if (navigatorKey.currentContext != null && Navigator.of(navigatorKey.currentContext!, rootNavigator: true).canPop()) {
+             Navigator.of(navigatorKey.currentContext!, rootNavigator: true).pop();
+         }
+         print("Rematch detected! Resetting UI for new game.");
+         // Reset necessary game state and UI for the new game (Round 1)
+         if (gameLogic != null) {
+            gameLogic!.gameOver = false; // Update local state
+            gameLogic!.roundNumber = 1; // Reset local round number
+            // Potentially re-sync logic or just update UI
+            startRound(); // Call startRound to reset UI elements and deal cards
+         }
+      }
+      // --- Handle other potential updates if needed ---
+      else if (!isGameOver && gameLogic != null && gameLogic!.roundNumber != currentRound && currentRound > 0) {
+         // This handles the normal next round transition (already covered by onNextRoundStarted callback?)
+         // Ensure this doesn't conflict with the rematch logic.
+         // Maybe add a check: if (!_isGameOverDialogShown) { ... }
+      }
+
+      // Update game logic state if necessary (e.g., pause)
+      if (gameLogic != null) {
+         gameLogic!.paused = data['isGamePaused'] ?? false;
+         // Sync other fields if needed
+      }
+
     });
   }
 
@@ -764,43 +800,75 @@ class TelefunkenGame extends FlameGame with TapDetector {
       context: context,
       barrierDismissible: false, // User must interact with the dialog
       builder: (dialogContext) {
-        return AlertDialog(
-          title: Text('Game Over!'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('$winnerName has won the game!', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                const SizedBox(height: 15),
-                Text('Final Scores:', style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 5),
-                DataTable(
-                  columnSpacing: 20,
-                  columns: const [
-                    DataColumn(label: Text('Player')),
-                    DataColumn(label: Text('Points'), numeric: true),
+        // Use a StreamBuilder to listen for changes in readyPlayers
+        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: firestoreController.listenToGameState(gameId),
+          builder: (context, snapshot) {
+            int readyCount = 0;
+            List<dynamic> readyPlayersList = [];
+            bool localPlayerIsReady = false;
+
+            if (snapshot.hasData && snapshot.data!.exists) {
+              final gameData = snapshot.data!.data()!;
+              readyPlayersList = gameData['readyPlayers'] ?? [];
+              readyCount = readyPlayersList.length;
+              localPlayerIsReady = readyPlayersList.contains(playerId); // Check if current player is ready
+            }
+
+            // Determine maxPlayers from gameLogic or snapshot
+            final int totalPlayers = gameLogic?.maxPlayers ?? finalPlayers.length;
+
+            return AlertDialog(
+              title: Text('Game Over!'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('$winnerName has won the game!', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    const SizedBox(height: 15),
+                    Text('Final Scores:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 5),
+                    DataTable(
+                      columnSpacing: 20,
+                      columns: const [
+                        DataColumn(label: Text('Player')),
+                        DataColumn(label: Text('Points'), numeric: true),
+                      ],
+                      rows: finalPlayers.map((player) {
+                        // Optional: Sort players by points
+                        // finalPlayers.sort((a, b) => a.getPoints().compareTo(b.getPoints()));
+                        return DataRow(cells: [
+                          DataCell(Text(player.name)),
+                          DataCell(Text(player.getPoints().toString())),
+                        ]);
+                      }).toList(),
+                    ),
                   ],
-                  rows: finalPlayers.map((player) {
-                    return DataRow(cells: [
-                      DataCell(Text(player.name)),
-                      DataCell(Text(player.getPoints().toString())),
-                    ]);
-                  }).toList(),
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  child: const Text('Back to Menu'),
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop(); // Close the dialog
+                    Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+                  },
+                ),
+                TextButton(
+                  // Disable button if player is already ready
+                  onPressed: localPlayerIsReady ? null : () {
+                    gameLogic?.handlePlayAgain(playerId);
+                  },
+                  child: Text(
+                    localPlayerIsReady
+                      ? 'Waiting for others...'
+                      : 'Play Again ($readyCount/$totalPlayers)',
+                  ),
                 ),
               ],
-            ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              child: const Text('Back to Menu'),
-              onPressed: () {
-                Navigator.of(dialogContext).pop(); // Close the dialog
-                // Navigate back to the main menu, removing all previous routes
-                Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
-              },
-            ),
-          ],
+            );
+          }
         );
       },
     );

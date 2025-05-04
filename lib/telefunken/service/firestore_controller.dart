@@ -15,22 +15,27 @@ class FirestoreController {
     String ruleSet,
     int duration, {
     String? password,
+    String? hostPlayerId, // Add hostPlayerId
   }) async {
     try {
       final gameDoc = await _firestore.collection('games').add({
         'room_name': roomName,
         'owner': hostPlayerName,
-        'current_players': 0, // Host startet mit 1 Spieler
+        'ownerId': hostPlayerId, // Store the owner's ID
+        'current_players': 0,
         'max_players': maxPlayers,
         'rules': ruleSet,
         'round_duration': duration,
         'created_at': FieldValue.serverTimestamp(),
         'password': password,
         'isGameStarted': false,
+        'isGameOver': false, // Initialize isGameOver
         'deck': [],
         'table': [],
         'discardPile': [],
-        'currentPlayer': hostPlayerName,
+        'currentPlayer': hostPlayerId, // Start with the host's ID
+        'readyPlayers': [], // Initialize readyPlayers list
+        'roundNumber': 0, // Start at round 0 before game starts
       });
 
       return gameDoc.id;
@@ -400,6 +405,93 @@ class FirestoreController {
     } catch (e) {
       print('Error getting round scores: $e');
       return {};
+    }
+  }
+
+  // Mark a player as ready for rematch and check if all are ready
+  Future<void> markPlayerReadyForRematch(String gameId, String playerId) async {
+    final gameRef = _firestore.collection('games').doc(gameId);
+
+    try {
+      await _firestore.runTransaction((transaction) async {
+        final gameSnapshot = await transaction.get(gameRef);
+        if (!gameSnapshot.exists) {
+          throw Exception("Game does not exist!");
+        }
+        final gameData = gameSnapshot.data()!;
+        final maxPlayers = gameData['max_players'] as int;
+        List<dynamic> readyPlayers = List.from(gameData['readyPlayers'] ?? []);
+
+        // Add player to ready list if not already present
+        if (!readyPlayers.contains(playerId)) {
+          readyPlayers.add(playerId);
+          transaction.update(gameRef, {
+            'readyPlayers': readyPlayers,
+          });
+          
+
+          // Check if all players are ready
+          if (readyPlayers.length == maxPlayers) {
+            print("All players ready for rematch!");
+            await resetGameForRematch(gameId);
+          }
+        }
+      });
+
+    } catch (e) {
+      print("Error marking player ready for rematch: $e");
+      rethrow;
+    }
+  }
+
+  // Reset the game state for a new match with the same players
+  Future<void> resetGameForRematch(String gameId) async {
+    print("Resetting game $gameId for rematch...");
+    final gameRef = _firestore.collection('games').doc(gameId);
+
+    try {
+       final gameSnapshot = await gameRef.get();
+       final gameData = gameSnapshot.data();
+       if (gameData == null) {
+         print("Error: Cannot reset non-existent game $gameId");
+         return;
+       }
+       final String originalOwnerId = gameData['ownerId'] ?? ''; // Assuming you store owner ID
+
+      // Reset game document fields
+      await gameRef.update({
+        'roundNumber': 1,
+        'isGameOver': false,
+        'winner': null,
+        'table': [],
+        'discardPile': [],
+        'readyPlayers': [],
+        'currentPlayer': originalOwnerId,
+      });
+
+      // Reset player subcollection documents
+      final playersSnapshot = await gameRef.collection('players').get();
+      for (var playerDoc in playersSnapshot.docs) {
+        await playerDoc.reference.update({
+          'points': 0,
+          'hand': [],
+          'isOut': false,
+          'hasDrawn': false,
+          // Keep 'coins' or reset them based on rules
+        });
+      }
+
+      // Reset and distribute cards
+      await resetDeck(gameId);
+      final playersData = await getPlayers(gameId); // Fetch updated player data (mainly IDs)
+      final players = playersData.map((data) => Player.fromMap(data)).toList();
+      await distributeCards(gameId, players); // Distribute cards for round 1
+
+      print("Game $gameId reset successfully for rematch.");
+
+    } catch (e) {
+      print("Error resetting game for rematch: $e");
+      rethrow;
     }
   }
 }

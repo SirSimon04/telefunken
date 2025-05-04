@@ -5,6 +5,7 @@ abstract class RuleSet {
   bool validateDiscard(CardEntity card);
   bool validateMove(List<CardEntity> cards);
   bool validateRoundCondition(List<List<CardEntity>> cards, int roundNumber);
+  int lastRoundNumber();
 
   static RuleSet fromName(String name) {
     // Example implementation

@@ -338,7 +338,7 @@ class GameLogic {
 
     calculatePoints();
     await Future.delayed(const Duration(seconds: 2));
-    if (roundNumber == 1) {
+    if (roundNumber == ruleSet.lastRoundNumber()) {
       final winner = getWinnigPlayer();
       await firestoreController.updateGameState(gameId, {
         'winner': winner.name,
@@ -493,4 +493,11 @@ class GameLogic {
   bool isPaused() => paused;
   bool isPlayersTurn(String pid) => players[currentPlayerIndex].id == pid;
   bool isGameOver() => gameOver;
+
+  // Method to handle the "Play Again" action
+  Future<void> handlePlayAgain(String playerId) async {
+    if (gameOver) {
+       await firestoreController.markPlayerReadyForRematch(gameId, playerId);
+    }
+  }
 }
