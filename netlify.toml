@@ -1,7 +1,15 @@
 [[plugins]]
 package = "netlify-plugin-flutter"
-   [plugins.inputs]
+  [plugins.inputs]
     channel = "stable"
+
 [build]
-command = "flutter build web --release"
-publish = "build/web"
+  # Command to install dependencies
+  # Use ":" to disable default dependency installation like npm install
+  install = ":"
+
+  # Command to build your site - the plugin handles setting up Flutter
+  command = "flutter build web --release"
+
+  # Directory that contains the deploy-ready HTML files
+  publish = "build/web"
