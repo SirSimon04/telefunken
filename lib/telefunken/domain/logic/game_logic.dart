@@ -269,6 +269,7 @@ class GameLogic {
       );
       await _updateDiscardPile();
       if(!await checkForWin()) nextTurn();
+      hasDrawnCard = false;
       return true;
     } else {
       final canDiscard =
@@ -295,6 +296,7 @@ class GameLogic {
       );
       await _updateDiscardPile();
       if(!await checkForWin()) nextTurn();
+      hasDrawnCard = false;
       return true;
     }
   }
