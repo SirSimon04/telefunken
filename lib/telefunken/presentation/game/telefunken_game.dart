@@ -53,6 +53,9 @@ class TelefunkenGame extends FlameGame with TapDetector {
 
   bool _isGameLogicInitialized = false;
 
+  // Add a variable to track if the dialog is already shown
+  bool _isGameOverDialogShown = false;
+
   TelefunkenGame({
     required this.gameId,
     required this.playerId,
@@ -67,6 +70,7 @@ class TelefunkenGame extends FlameGame with TapDetector {
     listenToGameState();
     listenToPlayersUpdate();
     listenToDrawAnimationTrigger();
+    _listenToGameUpdates();
   }
 
   Future<void> _loadUIComponents() async {
@@ -736,6 +740,70 @@ class TelefunkenGame extends FlameGame with TapDetector {
 
       animateDrawnCard(card, from: from, playerId: playerIdOfDraw);
     });
+  }
+
+  void _listenToGameUpdates() {
+    firestoreController.listenToGameState(gameId).listen((snapshot) {
+      if (!snapshot.exists) return;
+      final data = snapshot.data()!;
+      bool isGameOver = data['isGameOver'] ?? false;
+      String? winnerName = data['winner'] as String?;
+
+      // Check if game is over and dialog hasn't been shown yet
+      if (isGameOver && !_isGameOverDialogShown && winnerName != null) {
+        _isGameOverDialogShown = true; // Prevent showing multiple dialogs
+        // Fetch final player scores (ensure players list is up-to-date)
+        List<Player> finalPlayers = gameLogic!.players; // Or fetch fresh if needed
+        _showGameOverDialog(buildContext!, winnerName, finalPlayers);
+      }
+    });
+  }
+
+  void _showGameOverDialog(BuildContext context, String winnerName, List<Player> finalPlayers) {
+    showDialog(
+      context: context,
+      barrierDismissible: false, // User must interact with the dialog
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text('Game Over!'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('$winnerName has won the game!', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 15),
+                Text('Final Scores:', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 5),
+                DataTable(
+                  columnSpacing: 20,
+                  columns: const [
+                    DataColumn(label: Text('Player')),
+                    DataColumn(label: Text('Points'), numeric: true),
+                  ],
+                  rows: finalPlayers.map((player) {
+                    return DataRow(cells: [
+                      DataCell(Text(player.name)),
+                      DataCell(Text(player.getPoints().toString())),
+                    ]);
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Back to Menu'),
+              onPressed: () {
+                Navigator.of(dialogContext).pop(); // Close the dialog
+                // Navigate back to the main menu, removing all previous routes
+                Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+              },
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
