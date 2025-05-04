@@ -63,17 +63,27 @@ class GameLogic {
           ..addAll(deckData.map((card) => CardEntity.fromMap(card)));
       }
 
-      final tableData = gameData['table'] as List<dynamic>? ?? [];
-      table
-        ..clear()
-        ..addAll(
+      final tableData = gameData['table'];
+      table.clear();
+      if (tableData is Map<String, dynamic>) {
+        table.addAll(
+          tableData.values.map((group) {
+            if (group is List<dynamic>) {
+              return group.map((c) => CardEntity.fromMap(c)).toList();
+            }
+            throw Exception('Invalid table group format in Map');
+          }),
+        );
+      } else if (tableData is List<dynamic>) {
+        table.addAll(
           tableData.map((group) {
             if (group is List<dynamic>) {
               return group.map((c) => CardEntity.fromMap(c)).toList();
             }
-            throw Exception('Invalid table group format');
+            throw Exception('Invalid table group format in List');
           }),
         );
+      }
 
       final discardPileData = gameData['discardPile'] as List<dynamic>? ?? [];
       discardPile
@@ -82,7 +92,8 @@ class GameLogic {
           discardPileData.map((card) => CardEntity.fromMap(card)),
         );
     } catch (e) {
-      print('Error syncing with Firestore: $e');
+      // Consider logging this error instead of printing
+      // log.error('Error syncing with Firestore: $e');
     }
   }
 
@@ -95,7 +106,7 @@ class GameLogic {
 
   void nextTurn() async {
     hasDrawnCard = false;
-        await firestoreController.updatePlayer(
+    await firestoreController.updatePlayer(
       gameId,
       players[currentPlayerIndex].id,
       {
@@ -112,42 +123,34 @@ class GameLogic {
       'currentPlayer': players[currentPlayerIndex].id,
     });
 
-    
     await Future.delayed(const Duration(milliseconds: 200));
   }
 
   Future<void> nextRound() async {
-    // final roundWinner = players.firstWhere(
-    //   (p) => p.id == roundWinnerPlayerId,
-    //   orElse: () => players[0], // Fallback, though should always find the player
-    // );
-
-    // --- Updated Show Dialog ---
     if (navigatorKey.currentContext != null) {
       showDialog(
         context: navigatorKey.currentContext!,
-        barrierDismissible: false, // Keep it non-dismissible until timer runs out
+        barrierDismissible: false,
         builder: (context) {
-          // Auto-close dialog after 10 seconds
           Future.delayed(const Duration(seconds: 10), () {
             if (Navigator.of(context, rootNavigator: true).canPop()) {
-               Navigator.of(context, rootNavigator: true).pop();
+              Navigator.of(context, rootNavigator: true).pop();
             }
           });
 
           return AlertDialog(
             title: Text('Round $roundNumber Starting!'),
-            content: SingleChildScrollView( // Use SingleChildScrollView if content might overflow
+            content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('ddd finished the last round!'),
+                  Text('Next round begins!'), // Placeholder, consider passing winner name
                   const SizedBox(height: 15),
                   Text('Current Scores:', style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 5),
                   DataTable(
-                    columnSpacing: 20, // Adjust spacing as needed
+                    columnSpacing: 20,
                     columns: const [
                       DataColumn(label: Text('Player')),
                       DataColumn(label: Text('Points'), numeric: true),
@@ -166,12 +169,12 @@ class GameLogic {
         },
       );
     } else {
-       print("Error: navigatorKey.currentContext is null. Cannot show dialog.");
+      // Consider logging this error
+      // log.error("Error: navigatorKey.currentContext is null. Cannot show dialog.");
     }
-    //wait the 10 seconds
     await Future.delayed(const Duration(seconds: 11));
 
-    onNextRoundStarted?.call(); // Notify UI if needed
+    onNextRoundStarted?.call();
   }
 
   // ---------------------
@@ -182,16 +185,15 @@ class GameLogic {
 
     CardEntity drawnCard;
     if (source == 'deck') {
+      if (deck.isEmpty()) return; // Check if deck is empty
       drawnCard = deck.dealOne();
     } else if (source == 'discardPile' && discardPile.isNotEmpty) {
       if (players[currentPlayerIndex].getCoins() < 1) {
-        // Not enough coins
         return;
       }
       drawnCard = discardPile.removeLast();
       players[currentPlayerIndex].removeCoin();
     } else {
-      print("Invalid source or discard pile is empty.");
       return;
     }
 
@@ -209,6 +211,7 @@ class GameLogic {
               .map((card) => card.toMap())
               .toList(),
           'coins': players[currentPlayerIndex].getCoins(),
+          'hasDrawn': true, // Update hasDrawn status in Firestore
         },
       );
       await firestoreController.updateGameState(gameId, {
@@ -222,21 +225,18 @@ class GameLogic {
         source,
       );
     } catch (e) {
-      print('Error updating game state: $e');
+      // Consider logging this error
+      // log.error('Error updating game state after draw: $e');
     }
   }
 
   // ---------------------
   // MOVE VALIDATION
   // ---------------------
-
-  //add an optional parameter to the validateMove function
-  // to allow for a specific player to be passed in
   bool validateMove(List<CardEntity> cards, [bool addToMoves = true]) {
     if (!hasDrawnCard) return false;
     if (ruleSet.validateMove(cards)) {
-      if(addToMoves == false){}
-      else{
+      if (addToMoves) {
         currentMoves.add(cards);
       }
       return true;
@@ -248,57 +248,52 @@ class GameLogic {
     if (!hasDrawnCard) return false;
 
     if (card.rank == '2' || card.rank == 'Joker') {
-      print("Cannot discard a 2 or Joker.");
       return false;
     }
 
+    bool canDiscard = false;
+    bool playerIsOut = players[currentPlayerIndex].isOut();
+
     if (currentMoves.isEmpty) {
-      if (!ruleSet.validateDiscard(card)) return false;
-
-      discardPile.add(card);
-      players[currentPlayerIndex].removeCardFromHand(card);
-      firestoreController.updatePlayer(
-        gameId,
-        players[currentPlayerIndex].id,
-        {
-          'hand': players[currentPlayerIndex]
-              .hand
-              .map((card) => card.toMap())
-              .toList(),
-        },
-      );
-      await _updateDiscardPile();
-      if(!await checkForWin()) nextTurn();
-      hasDrawnCard = false;
-      return true;
+      // Simple discard without playing moves
+      canDiscard = true;
     } else {
-      final canDiscard =
-          players[currentPlayerIndex].isOut() ||
-          ruleSet.validateRoundCondition(currentMoves, roundNumber);
-
-      if (!canDiscard) return false;
-
-      discardPile.add(card);
-      players[currentPlayerIndex].removeCardFromHand(card);
-      addCurrentMovesToTable();
-      removeCurrentMovesFromPlayersHand();
-      players[currentPlayerIndex].setOut(true);
-      firestoreController.updatePlayer(
-        gameId,
-        players[currentPlayerIndex].id,
-        {
-          'hand': players[currentPlayerIndex]
-              .hand
-              .map((card) => card.toMap())
-              .toList(),
-          'isOut': players[currentPlayerIndex].isOut(),
-        },
-      );
-      await _updateDiscardPile();
-      if(!await checkForWin()) nextTurn();
-      hasDrawnCard = false;
-      return true;
+      // Discarding after playing moves
+      canDiscard = playerIsOut || ruleSet.validateRoundCondition(currentMoves, roundNumber);
     }
+
+    if (!canDiscard) return false;
+
+    // Perform discard
+    discardPile.add(card);
+    players[currentPlayerIndex].removeCardFromHand(card);
+
+    // Update player hand in Firestore
+    await firestoreController.updatePlayer(
+      gameId,
+      players[currentPlayerIndex].id,
+      {
+        'hand': players[currentPlayerIndex].hand.map((c) => c.toMap()).toList(),
+        'isOut': playerIsOut || currentMoves.isNotEmpty, // Update isOut if moves were played
+      },
+    );
+
+    // Add moves to table if any were made this turn
+    if (currentMoves.isNotEmpty) {
+      addCurrentMovesToTable(); // This updates Firestore table
+      removeCurrentMovesFromPlayersHand(); // Clears local currentMoves
+      players[currentPlayerIndex].setOut(true); // Update local state
+    }
+
+    // Update discard pile in Firestore
+    await _updateDiscardPile();
+
+    // Check for win, otherwise proceed to next turn
+    if (!await checkForWin()) {
+      nextTurn();
+    }
+    hasDrawnCard = false; // Reset draw status for next turn
+    return true;
   }
 
   void addCurrentMovesToTable() async {
@@ -312,20 +307,15 @@ class GameLogic {
     await firestoreController.updateGameState(gameId, {'table': tableMap});
   }
 
-  // Renamed from removeGroupFromCurrentMoves
   bool removeMove(List<CardEntity> group) {
-    // Suche exakte Übereinstimmung in currentMoves
-    // Using listEquals from package:collection for robust comparison
     final index = currentMoves.indexWhere((g) =>
         listEquals(g.map((c) => c.toString()).toList()..sort(),
-                   group.map((c) => c.toString()).toList()..sort()));
+            group.map((c) => c.toString()).toList()..sort()));
 
     if (index != -1) {
-      print("Removing move from currentMoves: $group");
       currentMoves.removeAt(index);
       return true;
     }
-    print("Move not found in currentMoves to remove: $group");
     return false;
   }
 
@@ -336,29 +326,29 @@ class GameLogic {
     if (players[currentPlayerIndex].hand.isNotEmpty) return false;
     final roundWinnerId = players[currentPlayerIndex].id;
 
-    calculatePoints();
-    await Future.delayed(const Duration(seconds: 2));
+    calculatePoints(); // This updates Firestore player points and round scores
+    await Future.delayed(const Duration(seconds: 2)); // Allow time for score display/animation
+
     if (roundNumber == ruleSet.lastRoundNumber()) {
       final winner = getWinnigPlayer();
       await firestoreController.updateGameState(gameId, {
         'winner': winner.name,
         'isGameOver': true,
       });
-      return true;
+      return true; // Game over
     } else {
+      // Start next round (updates Firestore round number, currentPlayer, etc.)
       firestoreController.startNewRound(gameId, roundWinnerId);
-      return true;
+      return true; // Round over, but game continues
     }
   }
 
   void calculatePoints() async {
-    final roundPenaltyPoints = <String, int>{}; // Renamed for clarity
+    final roundPenaltyPoints = <String, int>{};
     for (var player in players) {
-      // Skip the player who went out (they have 0 penalty points for the round)
       if (player.id == players[currentPlayerIndex].id && player.hand.isEmpty) {
-         roundPenaltyPoints[player.id] = 0;
-         print("Skip player ${player.name} with 0 points");
-         continue;
+        roundPenaltyPoints[player.id] = 0;
+        continue;
       }
 
       int points = 0;
@@ -371,23 +361,25 @@ class GameLogic {
           points += 50;
         } else if (['3', '4', '5', '6', '7'].contains(card.rank)) {
           points += 5;
-        } else { // 8, 9, 10, J, Q, K
+        } else {
+          // 8, 9, 10, J, Q, K
           points += 10;
         }
       }
-      player.addPoints(points);
+      player.addPoints(points); // Update local player points
       roundPenaltyPoints[player.id] = points;
 
+      // Update total points in Firestore for the player
       await firestoreController.updatePlayer(gameId, player.id, {
         'points': player.points,
       });
     }
-    print("Round Penalty Points: $roundPenaltyPoints");
     // Send the map of ROUND penalty points to Firestore
     await firestoreController.updateRoundScores(gameId, roundNumber, roundPenaltyPoints);
   }
 
   Player getWinnigPlayer() {
+    // Assumes lowest score wins
     var winner = players[0];
     for (var p in players) {
       if (p.points < winner.points) winner = p;
@@ -405,15 +397,7 @@ class GameLogic {
   }
 
   void removeCurrentMovesFromPlayersHand() async {
-    for (var move in currentMoves) {
-      players[currentPlayerIndex].removeCardsFromHand(move);
-    }
     currentMoves.clear();
-    await firestoreController.updatePlayer(
-      gameId,
-      players[currentPlayerIndex].id,
-      {'hand': players[currentPlayerIndex].hand.map((c) => c.toMap()).toList()},
-    );
   }
 
   // ---------------------
@@ -424,13 +408,11 @@ class GameLogic {
       if (!snapshot.exists) return;
       final data = snapshot.data()!;
 
-      // Spieler
       final cpIndex = players.indexWhere((p) => p.id == data['currentPlayer']);
       if (cpIndex >= 0) {
         currentPlayerIndex = cpIndex;
       }
 
-      // Table
       final tableData = data['table'];
       table.clear();
       if (tableData is Map<String, dynamic>) {
@@ -453,16 +435,14 @@ class GameLogic {
         );
       }
 
-      // Discard Pile
       discardPile.clear();
       final discardData = data['discardPile'];
       if (discardData is List<dynamic>) {
         discardPile.addAll(discardData.map((card) => CardEntity.fromMap(card as Map<String, dynamic>)));
       } else {
-        throw Exception('Invalid discard pile data format');
+        // Consider logging error
       }
 
-      // Deck
       final deckData = data['deck'];
       if (deckData is List<dynamic>) {
         try {
@@ -470,14 +450,17 @@ class GameLogic {
             ..clear()
             ..addAll(deckData.map((card) => CardEntity.fromMap(card as Map<String, dynamic>)));
         } catch (e) {
-          print('Error processing deck data: $e');
+          // Consider logging error
         }
       }
 
-      if(data['roundNumber'] != roundNumber) {
-        nextRound();
+      final newRoundNumber = data['roundNumber'] ?? roundNumber;
+      if (newRoundNumber != roundNumber && newRoundNumber > 0) {
+        roundNumber = newRoundNumber;
+        nextRound(); // Trigger the round transition dialog/logic
+      } else {
+        roundNumber = newRoundNumber; // Sync round number if it hasn't triggered nextRound
       }
-      roundNumber = data['roundNumber'] ?? roundNumber;
 
       paused = data['isGamePaused'] ?? false;
       gameOver = data['isGameOver'] ?? false;
@@ -486,18 +469,35 @@ class GameLogic {
 
   void listenToPlayerUpdates() {
     firestoreController.listenToPlayersUpdate(gameId).listen((playersData) {
-      players = playersData.map((p) => Player.fromMap(p)).toList();
+      // Update local player list, preserving order might be important
+      final updatedPlayers = playersData.map((p) => Player.fromMap(p)).toList();
+
+      // Update existing players and add new ones (safer if order matters)
+      for (var updatedPlayer in updatedPlayers) {
+        final index = players.indexWhere((p) => p.id == updatedPlayer.id);
+        if (index != -1) {
+          players[index] = updatedPlayer; // Update existing
+        } else {
+          players.add(updatedPlayer); // Add new (shouldn't happen mid-game?)
+        }
+      }
+      // Remove players no longer in the update (if players can leave mid-game)
+      players.removeWhere((p) => !updatedPlayers.any((up) => up.id == p.id));
+
+      // Update hasDrawnCard based on the current player's updated status
+      if (players.isNotEmpty && currentPlayerIndex < players.length) {
+        hasDrawnCard = players[currentPlayerIndex].getHasDrawn();
+      }
     });
   }
 
   bool isPaused() => paused;
-  bool isPlayersTurn(String pid) => players[currentPlayerIndex].id == pid;
+  bool isPlayersTurn(String pid) => players.isNotEmpty && currentPlayerIndex < players.length && players[currentPlayerIndex].id == pid;
   bool isGameOver() => gameOver;
 
-  // Method to handle the "Play Again" action
   Future<void> handlePlayAgain(String playerId) async {
     if (gameOver) {
-       await firestoreController.markPlayerReadyForRematch(gameId, playerId);
+      await firestoreController.markPlayerReadyForRematch(gameId, playerId);
     }
   }
 }
