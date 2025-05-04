@@ -119,7 +119,7 @@ class CardComponent extends SpriteComponent with TapCallbacks, DragCallbacks, Co
     for (var card in selectedCardsCopy) {
       card.position.add(event.localDelta);
     }
-    lastPointerPosition = event.localPosition;
+    lastPointerPosition = event.localDelta;
 
     arrangeSelectedCardsAroundDraggedCard(this);
   }
