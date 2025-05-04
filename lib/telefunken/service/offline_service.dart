@@ -1,0 +1,1 @@
+//Enthält Logik für Offline (z. B. KI-Spieler, local storage, etc.).
