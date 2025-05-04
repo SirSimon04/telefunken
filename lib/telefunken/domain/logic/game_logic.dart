@@ -338,7 +338,7 @@ class GameLogic {
 
     calculatePoints();
     await Future.delayed(const Duration(seconds: 2));
-    if (roundNumber == 7) {
+    if (roundNumber == 1) {
       final winner = getWinnigPlayer();
       await firestoreController.updateGameState(gameId, {
         'winner': winner.name,
