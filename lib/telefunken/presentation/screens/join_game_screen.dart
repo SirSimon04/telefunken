@@ -49,6 +49,12 @@ class JoinGameScreen extends StatelessWidget {
 
         var games = snapshot.data?.docs ?? [];
 
+        //outsource games that already finished
+        games = games.where((doc) {
+          var gameData = doc.data() as Map<String, dynamic>;
+          return gameData['isGameOver'] != true;
+        }).toList();
+
         if (games.isEmpty) {
           return const Center(
             child: Text("No games found", style: TextStyle(color: Colors.white, fontSize: 18)),
