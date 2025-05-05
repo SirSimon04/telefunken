@@ -1,5 +1,11 @@
 # Telefunken Card Game
 
+## Podman usage
+- only tested with podman, but docker should work as well
+- Podman version: 5.4.2
+- `docker build -t telefunken .` to build the image
+- `podman run -i -p 8080:9000 -td localhost/telefunken:latest`
+
 ## Overview
 The Telefunken project implements a card game with specific rules for validating moves. The game allows players to use cards in groups or sequences, with special handling for wildcards (Jokers and 2s). This README provides an overview of the project structure, setup instructions, and testing guidelines.
 
