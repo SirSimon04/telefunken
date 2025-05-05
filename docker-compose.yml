@@ -1,0 +1,17 @@
+# Use version 3 of the Docker Compose file format
+version: '3.8'
+
+# Define the services for your application
+services:
+  # This service will build and run your Flutter web app
+  web:
+    build: .
+    ports:
+      - "8000:80"
+    # Add resource limits, try increasing memory
+    # Adjust these values based on your system's resources
+    deploy:
+      resources:
+        limits:
+          memory: 2G # Start with 2GB, increase if needed (e.g., 4G)
+          # cpu: '1.0' # Optional: Limit CPU usage to 1 core
