@@ -24,7 +24,6 @@ RUN flutter doctor
 RUN flutter channel master
 RUN flutter upgrade
 RUN flutter config --enable-web
-RUN flutter create . telefunken
 
 # Copy files to container and build
 RUN mkdir /app/
