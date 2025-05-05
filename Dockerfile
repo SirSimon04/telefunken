@@ -1,39 +1,40 @@
-# Use a base image with Flutter SDK
-# Use a specific, more recent Flutter version tag
-FROM cirrusci/flutter:3.22.0 as builder
+# Install Operating system and dependencies
+FROM ubuntu:20.04
 
-# Set the working directory
-WORKDIR /app
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Copy pubspec files first to leverage Docker cache
-COPY pubspec.* ./
+RUN apt-get update 
+RUN apt-get install -y curl git wget unzip libgconf-2-4 gdb libstdc++6 libglu1-mesa fonts-droid-fallback python3
+RUN apt-get clean
 
-# Get Flutter dependencies
-# Keep -v for now to see verbose output if it still fails
-RUN flutter pub get -v
+ENV DEBIAN_FRONTEND=dialog
+ENV PUB_HOSTED_URL=https://pub.flutter-io.cn
+ENV FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn
 
-# Copy the rest of the application code
-COPY . .
+# download Flutter SDK from Flutter Github repo
+RUN git clone https://github.com/flutter/flutter.git /usr/local/flutter
 
-# Build the web application
-# Use --release for optimized output
-RUN flutter build web --release
+# Set flutter environment path
+ENV PATH="/usr/local/flutter/bin:/usr/local/flutter/bin/cache/dart-sdk/bin:${PATH}"
 
-# --- Serve stage ---
-# Use a lightweight image for serving the static files
-FROM node:slim as server
+# Run flutter doctor
+RUN flutter doctor
 
-# Install a simple static file server
-RUN npm install -g serve
+# Enable flutter web
+RUN flutter channel master
+RUN flutter upgrade
+RUN flutter config --enable-web
 
-# Set the working directory
-WORKDIR /app
+# Copy files to container and build
+RUN mkdir /app/
+COPY . /app/
+WORKDIR /app/
+RUN flutter build web
 
-# Copy the built web app from the builder stage
-COPY --from=builder /app/build/web ./
+# Record the exposed port
+EXPOSE 9000
 
-# Expose the port the server will listen on
-EXPOSE 80
+# make server startup script executable and start the web server
+RUN ["chmod", "+x", "/app/server/server.sh"]
 
-# Command to run the static file server
-CMD ["serve", "-s", ".", "-l", "80", "-H", "0.0.0.0"]
+ENTRYPOINT [ "/app/server/server.sh"]
